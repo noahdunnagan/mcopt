@@ -1,7 +1,6 @@
 #!/bin/sh
 # Build the mod and package it, locally (nothing is uploaded anywhere):
-# - dist/mcopt-VERSION.jar, the single-jar install (tools/bundle.py): the Metal mod, natives inside, with the fps counter
-#   nested through Fabric's jar-in-jar. Put it in the mods folder next to Sodium.
+# - dist/mcopt-VERSION.jar, the single-jar install: the Metal mod, natives inside. Put it in the mods folder next to Sodium.
 # - dist/mcopt-metal-VERSION.zip: mcopt-metal-VERSION/{mcopt-metal-VERSION.jar, README.txt, LICENSE, NOTICE}
 #   (README.txt is RELEASE-README.txt with the version filled in).
 # Sodium is never bundled: it's a separate download.
@@ -11,11 +10,9 @@ cd "$(dirname "$0")/.."
 die() { echo "$*" >&2; exit 1; }
 version=$(sed -n "s/^version = '\(.*\)'$/\1/p" metal/build.gradle)
 [ -n "$version" ] || die "No version in metal/build.gradle."
-./gradlew :metal:build :fpshud:build -q --console=plain
+./gradlew :metal:build -q --console=plain
 jar=metal/build/libs/metal-$version.jar
 [ -f "$jar" ] || die "The build made no $jar."
-fps=fpshud/build/libs/fpshud-$version.jar
-[ -f "$fps" ] || die "The build made no $fps."
 name=mcopt-metal-$version
 rm -rf "dist/$name" "dist/$name.zip"
 mkdir -p "dist/$name"
@@ -24,4 +21,5 @@ cp LICENSE NOTICE "dist/$name/"
 sed "s/@VERSION@/$version/g" RELEASE-README.txt > "dist/$name/README.txt"
 (cd dist && zip -qrX "$name.zip" "$name")
 echo "dist/$name.zip"
-python3 tools/bundle.py --metal "$jar" --fps "$fps" --out "dist/mcopt-$version.jar"
+cp "$jar" "dist/mcopt-$version.jar"
+echo "dist/mcopt-$version.jar"

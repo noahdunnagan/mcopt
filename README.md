@@ -14,7 +14,7 @@ A Minecraft performance mod for Apple Silicon Macs. **Very much alpha:** expect 
 
 Drop the mcopt jar and the Sodium jar into `~/Library/Application Support/minecraft/mods`. Done.
 
-Shows an fps counter in the top-left corner (hidden with F1 or F3).
+F3 shows the fps. To keep it on screen, press F3 + F6 (Debug Options) and set `fps` to Always.
 
 ## Settings
 

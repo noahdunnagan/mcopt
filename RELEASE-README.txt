@@ -21,8 +21,8 @@ Install
 
 The jar is a mod, not an app: double-clicking it only shows these install steps.
 
-For the most fps: Options > Video Settings, VSync off and Max Framerate Unlimited. F3 shows the fps.
-Shows an fps counter in the top-left corner (hidden with F1 or F3).
+For the most fps: Options > Video Settings, VSync off and Max Framerate Unlimited. F3 shows the fps;
+to keep it on screen, press F3 + F6 (Debug Options) and set fps to Always.
 
 If Sodium is missing or the wrong version, Fabric stops at launch and tells you which version to install.
 On a computer the mod can't run on (not an Apple Silicon Mac, or macOS older than 26), the game stops at launch
