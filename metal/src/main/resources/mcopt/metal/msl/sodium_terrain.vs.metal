@@ -52,8 +52,12 @@ static main0_out shade(uint2 a_Position, float4 a_Color, uint2 a_TexCoord, uint4
 
     float cylindrical = max(length(position.xz), abs(position.y));
     float spherical = length(position);
-    out.v_Fog = half2((spherical - g.u_EnvironmentFog.x) / (g.u_EnvironmentFog.y - g.u_EnvironmentFog.x),
-                      (cylindrical - g.u_RenderFog.x) / (g.u_RenderFog.y - g.u_RenderFog.x));
+    // Sodium's linear_fog_value tests distance <= start before distance >= end, so a range whose start isn't below its end
+    // (mods that switch fog off push the start out past any distance but may leave the end) is no fog before the start and
+    // full fog after it. A tiny positive span gives that step; for an ordinary range it changes nothing.
+    float2 fogStart = float2(g.u_EnvironmentFog.x, g.u_RenderFog.x);
+    float2 fogSpan = max(float2(g.u_EnvironmentFog.y, g.u_RenderFog.y) - fogStart, 1e-4);
+    out.v_Fog = half2(clamp((float2(spherical, cylindrical) - fogStart) / fogSpan, -float(HALF_MAX), float(HALF_MAX)));
 
     int chunkFade = sectionTimeInfo.read(r.id * 256u + drawId).x;
     half fade = chunkFade < 0 ? 1.0h : half(clamp(float(r.time - chunkFade) * g.u_FadePeriodInv, 0.0, 1.0));
