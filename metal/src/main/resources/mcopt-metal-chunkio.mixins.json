@@ -4,7 +4,8 @@
 	"plugin": "mcopt.metal.mixin.chunkio.ChunkIoMixinPlugin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"RegionFileStorageMixin"
+		"RegionFileStorageMixin",
+		"RegionFileStorageAccess"
 	],
 	"injectors": {
 		"defaultRequire": 1
