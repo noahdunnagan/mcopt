@@ -3,6 +3,7 @@
 // Built without ARC so ownership is explicit. Hot encoder calls allocate nothing, so they need no autorelease pool.
 #include <stdatomic.h>
 #import "mcmetal.h"
+#import <AppKit/AppKit.h>
 #import <CoreVideo/CoreVideo.h>
 #import <MetalFX/MetalFX.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -1192,6 +1193,17 @@ void mc_sleep_precise(int64_t ns) {
 id<CAMetalDrawable> mc_layer_next(CAMetalLayer *layer) {
 	@autoreleasepool {
 		return [[layer nextDrawable] retain];
+	}
+}
+
+CAMetalLayer *mc_layer_attach(NSWindow *window) {
+	@autoreleasepool {
+		NSView *view = [window contentView];
+		CAMetalLayer *layer = [[CAMetalLayer alloc] init];
+		layer.contentsScale = [window backingScaleFactor];
+		[view setLayer:layer];
+		[view setWantsLayer:YES];
+		return layer;
 	}
 }
 

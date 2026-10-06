@@ -1,0 +1,7 @@
+{
+	"required": true,
+	"package": "mcopt.metal.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["FramerateLimiterMixin", "PreferredGraphicsApiMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

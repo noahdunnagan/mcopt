@@ -8,6 +8,7 @@
 	"authors": ["Noah Dunnagan"],
 	"environment": "client",
 	"entrypoints": { "preLaunch": ["mcopt.metal.Preload"] },
-	"mixins": [${mixins}],
+	"mixins": ["${mixins}"],
+	"accessWidener": "mcopt-metal.accesswidener",
 	"depends": { "fabricloader": ">=0.19.5", "minecraft": "${minecraft_dep}", "java": ">=25", "sodium": "${sodium_dep}" }
 }

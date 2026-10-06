@@ -1,0 +1,7 @@
+{
+	"required": true,
+	"package": "mcopt.metal.mixin.sodium",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["RenderPassAccess", "DrawContextMixin", "StagingFlushMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

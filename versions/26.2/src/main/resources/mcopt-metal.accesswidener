@@ -1,0 +1,5 @@
+accessWidener v1 official
+
+accessible class com/mojang/blaze3d/vulkan/glsl/SpvSampler
+accessible class com/mojang/blaze3d/vulkan/glsl/SpvUniformBuffer
+accessible class com/mojang/blaze3d/vulkan/glsl/SpvVariable

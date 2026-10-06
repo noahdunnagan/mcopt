@@ -24,6 +24,10 @@ subprojects {
 		compileOnly "maven.modrinth:sodium:${sodium_version}"
 	}
 
+	loom {
+		accessWidenerPath = file('src/main/resources/mcopt-metal.accesswidener')
+	}
+
 	sourceSets.main {
 		java.srcDir new File(shared, 'java')
 		resources.srcDir new File(shared, 'resources')
@@ -38,13 +42,13 @@ subprojects {
 		outputs.file output
 		doFirst { output.parentFile.mkdirs() }
 		commandLine(['clang', '-fno-objc-arc', '-O2', '-Wall', '-arch', 'arm64', '-mmacosx-version-min=15.0', '-dynamiclib', '-install_name', '@rpath/libmcmetal.dylib',
-			'-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
+			'-framework', 'AppKit', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
 	}
 
 	processResources {
 		dependsOn 'compileNative'
 		from(layout.buildDirectory.dir('natives'))
-		def props = [version: version, minecraft_dep: minecraft_dep, sodium_dep: sodium_dep, mixins: mixins.split(',').collect { "\"${it}.mixins.json\"" }.join(', ')]
+		def props = [version: version, minecraft_dep: minecraft_dep, sodium_dep: sodium_dep, mixins: mixins.split(',').collect { "${it}.mixins.json" }.join('", "')]
 		inputs.properties props
 		filesMatching('fabric.mod.json') { expand props }
 	}
