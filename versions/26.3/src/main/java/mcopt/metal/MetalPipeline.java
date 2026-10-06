@@ -7,6 +7,7 @@ import com.mojang.renderpearl.api.pipeline.PolygonMode;
 import com.mojang.renderpearl.api.pipeline.ShaderType;
 import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.api.SpvModule;
+import mcopt.metal.Msl.Translated;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -18,13 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
-import org.lwjgl.util.spvc.Spv;
-import org.lwjgl.util.spvc.SpvcMslResourceBinding;
-
-import static org.lwjgl.util.spvc.Spvc.*;
 
 /**
  * A pipeline is the frontend's SPIR-V run through SPIRV-Cross into Metal Shading Language, compiled by Metal.
@@ -86,24 +82,24 @@ final class MetalPipeline implements BackendRenderPipeline {
 			if (DUMP_DIR != null) dump(info.name(), v, f);
 			String defines = BUILTIN_MSL ? SODIUM_TERRAIN.get(info.name()) : null;
 			if (defines != null) {
-				v = new Translated(resource("sodium_terrain.vs.metal"), v.entry);
-				f = new Translated(defines + resource("sodium_terrain.fs.metal"), f.entry);
+				v = new Translated(resource("sodium_terrain.vs.metal"), v.entry());
+				f = new Translated(defines + resource("sodium_terrain.fs.metal"), f.entry());
 			}
 			if (OVERRIDE_DIR != null) {
 				v = override(info.name() + ".vs.metal", v);
 				f = override(info.name() + ".fs.metal", f);
 			}
 			if (UNCACHED) {
-				v = new Translated("// " + UNCACHED_NONCE + "\n" + v.msl, v.entry);
-				f = new Translated("// " + UNCACHED_NONCE + "\n" + f.msl, f.entry);
+				v = new Translated("// " + UNCACHED_NONCE + "\n" + v.msl(), v.entry());
+				f = new Translated("// " + UNCACHED_NONCE + "\n" + f.msl(), f.entry());
 			}
 			t1 = System.nanoTime();
-			vlib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(v.msl)), err, 4096);
-			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
-			flib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(f.msl)), err, 4096);
-			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
+			vlib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(v.msl())), err, 4096);
+			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl());
+			flib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(f.msl())), err, 4096);
+			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl());
 			t2 = System.nanoTime();
-			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
+			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry())), fname = MemoryUtil.memAddress(stack.UTF8(f.entry()));
 			DepthStencilState depth = info.depthStencilState();
 			long withDepth = Native.pipelineNew(ctx, vlib, vname, flib, fname, describe(stack, info, true, true), err, 4096);
 			if (withDepth == 0) throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
@@ -177,8 +173,8 @@ final class MetalPipeline implements BackendRenderPipeline {
 	private static void dump(String name, Translated v, Translated f) {
 		try {
 			Files.createDirectories(Path.of(DUMP_DIR));
-			Files.writeString(Path.of(DUMP_DIR, fileName(name) + ".vs.metal"), v.msl);
-			Files.writeString(Path.of(DUMP_DIR, fileName(name) + ".fs.metal"), f.msl);
+			Files.writeString(Path.of(DUMP_DIR, fileName(name) + ".vs.metal"), v.msl());
+			Files.writeString(Path.of(DUMP_DIR, fileName(name) + ".fs.metal"), f.msl());
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -189,7 +185,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 		if (!Files.exists(file)) return generated;
 		try {
 			System.out.println("mcopt-metal: using " + file);
-			return new Translated(Files.readString(file), generated.entry);
+			return new Translated(Files.readString(file), generated.entry());
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -231,9 +227,6 @@ final class MetalPipeline implements BackendRenderPipeline {
 		d.put(hasDepth ? MetalConst.pixelFormat(com.mojang.renderpearl.api.GpuFormat.D32_FLOAT) : 0);
 		d.put(MetalConst.topologyClass(info.primitiveTopology()));
 		return MemoryUtil.memAddress(d.flip());
-	}
-
-	private record Translated(String msl, String entry) {
 	}
 
 	/**
@@ -293,7 +286,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 		try {
 			java.nio.file.Files.createDirectories(MSL_DIR);
 			java.nio.file.Path tmp = java.nio.file.Files.createTempFile(MSL_DIR, key, ".tmp");
-			java.nio.file.Files.writeString(tmp, t.entry + "\n" + t.msl);
+			java.nio.file.Files.writeString(tmp, t.entry() + "\n" + t.msl());
 			java.nio.file.Files.move(tmp, file, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 		} catch (java.io.IOException e) {
 			// a cache that can't be written is just a slower launch
@@ -302,47 +295,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 	}
 
 	private static Translated translateNow(SpvModule module, int uniformCount) {
-		boolean vertex = module.type() == ShaderType.VERTEX;
-		int model = vertex ? Spv.SpvExecutionModelVertex : Spv.SpvExecutionModelFragment;
-		IntBuffer spirv = module.spv().asIntBuffer();
-		try (MemoryStack stack = MemoryStack.stackPush()) {
-			PointerBuffer out = stack.callocPointer(1);
-			check(0, spvc_context_create(out), "context");
-			long context = out.get(0);
-			try {
-				check(context, spvc_context_parse_spirv(context, spirv, spirv.remaining(), out), "parse");
-				long ir = out.get(0);
-				check(context, spvc_context_create_compiler(context, SPVC_BACKEND_MSL, ir, SPVC_CAPTURE_MODE_TAKE_OWNERSHIP, out), "compiler");
-				long compiler = out.get(0);
-				check(context, spvc_compiler_create_compiler_options(compiler, out), "options");
-				long options = out.get(0);
-				spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_MSL_VERSION, 30000);
-				spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_MACOS);
-				spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_MSL_TEXTURE_BUFFER_NATIVE, true);
-				if (vertex) spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_FLIP_VERTEX_Y, true);
-				check(context, spvc_compiler_install_compiler_options(compiler, options), "install options");
-				for (int i = 0; i < uniformCount; i++) bind(stack, compiler, model, 0, i, i);
-				bind(stack, compiler, model, SPVC_MSL_PUSH_CONSTANT_DESC_SET, SPVC_MSL_PUSH_CONSTANT_BINDING, MetalConst.PUSH_CONSTANTS_INDEX);
-				check(context, spvc_compiler_compile(compiler, out), "compile");
-				String msl = MemoryUtil.memUTF8(out.get(0));
-				return new Translated(msl, spvc_compiler_get_cleansed_entry_point_name(compiler, "main", model));
-			} finally {
-				spvc_context_destroy(context);
-			}
-		}
-	}
-
-	private static void bind(MemoryStack stack, long compiler, int model, int set, int binding, int slot) {
-		SpvcMslResourceBinding b = SpvcMslResourceBinding.calloc(stack);
-		spvc_msl_resource_binding_init(b);
-		b.stage(model).desc_set(set).binding(binding).msl_buffer(slot).msl_texture(slot).msl_sampler(slot);
-		spvc_compiler_msl_add_resource_binding(compiler, b);
-	}
-
-	private static void check(long context, int result, String step) {
-		if (result != 0) {
-			throw new IllegalStateException("SPIRV-Cross " + step + " failed: " + (context != 0 ? spvc_context_get_last_error_string(context) : result));
-		}
+		return Msl.translate(module.spv().asIntBuffer(), module.type() == ShaderType.VERTEX, uniformCount);
 	}
 
 	@Override
