@@ -11,6 +11,7 @@ import org.lwjgl.glfw.GLFW;
 
 public final class MetalBackend implements GpuBackend {
 	private static volatile boolean active;
+	static @Nullable MetalEncoder encoder;
 
 	public static boolean isActive() {
 		return active;
@@ -33,7 +34,9 @@ public final class MetalBackend implements GpuBackend {
 
 	@Override
 	public GpuDevice createDevice(long window, ShaderSource shaderSource, GpuDebugOptions debugOptions, Runnable criticalShaderLoader) throws BackendCreationException {
-		GpuDevice device = new GpuDevice(new MetalDevice(shaderSource), criticalShaderLoader);
+		MetalDevice metal = new MetalDevice(shaderSource);
+		GpuDevice device = new GpuDevice(metal, criticalShaderLoader);
+		encoder = (MetalEncoder) metal.createCommandEncoder();
 		active = true;
 		return device;
 	}

@@ -66,4 +66,8 @@ class MetalTexture extends GpuTexture {
 			}
 		}
 	}
+
+	static MetalTexture of(GpuTextureView view) {
+		return (MetalTexture) view.texture();
+	}
 }

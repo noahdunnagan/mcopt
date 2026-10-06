@@ -4,8 +4,6 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
-import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemoryLayout;
@@ -57,10 +55,7 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
  * frames, the latency baseline. Off (the default): none of this runs.
  */
 public final class FrameGen {
-	private static final String MODE = System.getProperty("mcopt.metal.framegen", "false");
-	/** Frame generation or its paced baseline; fixed at startup, so the backend's own paths never change otherwise. */
-	public static final boolean ENABLED = ("true".equals(MODE) || "paced".equals(MODE)) && MetalFx.SCALE >= 1;
-	private static final boolean GENERATE = "true".equals(MODE);
+	private static volatile String mode = System.getProperty("mcopt.metal.framegen", "false");
 	/** -Dmcopt.metal.framegen.view=generated: generated frames without the GUI; =motion: the motion vectors instead. */
 	private static final String VIEW = System.getProperty("mcopt.metal.framegen.view", "");
 	/**
@@ -153,13 +148,40 @@ public final class FrameGen {
 		} catch (Throwable t) {
 			throw new IllegalStateException(t);
 		}
-		System.out.printf("mcopt-framegen: %s (refresh %.2f Hz, %s holds)%n", GENERATE ? "MetalFX frame interpolation on" : "paced baseline, no generated frames",
+		System.out.printf("mcopt-framegen: %s (refresh %.2f Hz, %s holds)%n", generate() ? "MetalFX frame interpolation on" : "paced baseline, no generated frames",
 			period() > 0 ? 1 / period() : 0, EVEN ? "even" : "uneven");
 	}
 
 	/** The frame generator on the Metal backend, created on first use; null otherwise. */
+	public static boolean enabled() {
+		return ("true".equals(mode) || "paced".equals(mode)) && MetalFx.scale() >= 1;
+	}
+
+	private static boolean generate() {
+		return "true".equals(mode);
+	}
+
+	public static String mode() {
+		return mode;
+	}
+
+	public static void setMode(String value) {
+		if (value.equals(mode)) return;
+		mode = value;
+		if (!enabled() && instance != null) instance.pause();
+		MetalSurface.reconfigureCurrent();
+	}
+
+	private void pause() {
+		this.close();
+		this.cameraSet = this.captured = this.previousCaptured = this.pair = false;
+		this.previousCamera = null;
+		this.submitted = 0;
+	}
+
 	static @Nullable FrameGen get(MetalEncoder encoder) {
-		if (instance != null || failed || !ENABLED) return instance;
+		if (!enabled()) return null;
+		if (instance != null || failed) return instance;
 		try {
 			return instance = new FrameGen(encoder);
 		} catch (RuntimeException e) {
@@ -170,8 +192,10 @@ public final class FrameGen {
 	}
 
 	private static @Nullable FrameGen get() {
-		if (instance != null || failed || !ENABLED) return instance;
-		if (!(((FrontendCommandEncoder) RenderSystem.getDevice().createCommandEncoder()).backend() instanceof MetalEncoder encoder)) {
+		if (!enabled()) return null;
+		if (instance != null || failed) return instance;
+		MetalEncoder encoder = Versioned.encoder();
+		if (encoder == null) {
 			failed = true;
 			return null;
 		}
@@ -186,7 +210,7 @@ public final class FrameGen {
 	 */
 	public static void levelDrawn(RenderTarget main, Matrix4fc projection, CameraRenderState camera, boolean consistentDepth) {
 		FrameGen g = get();
-		if (g == null || !GENERATE) return;
+		if (g == null || !generate()) return;
 		g.consistentDepth = consistentDepth;
 		g.recordLevel(main, projection, camera);
 	}
@@ -250,7 +274,7 @@ public final class FrameGen {
 		Minecraft mc = Minecraft.getInstance();
 		this.inLevel = levelRendered && mc.gui.screen() == null && mc.gui.overlay() == null;
 		this.captured = this.pair = this.uiDrawn = this.uiBroken = false;
-		boolean ok = GENERATE && this.inLevel && this.cameraSet && main.width == this.width && main.height == this.height;
+		boolean ok = generate() && this.inLevel && this.cameraSet && main.width == this.width && main.height == this.height;
 		this.cameraSet = false;
 		if (!ok) {
 			this.previousCaptured = false;
@@ -321,8 +345,8 @@ public final class FrameGen {
 			throw rethrow(t);
 		}
 		if (this.black == null) {
-			this.black = new TextureTarget("mcopt framegen GUI over black", main.width, main.height, main.getColorTexture().getFormat(), main.getDepthTexture().getFormat());
-			this.white = new TextureTarget("mcopt framegen GUI over white", main.width, main.height, main.getColorTexture().getFormat(), main.getDepthTexture().getFormat());
+			this.black = Versioned.target("mcopt framegen GUI over black", main);
+			this.white = Versioned.target("mcopt framegen GUI over white", main);
 		} else {
 			this.black.resize(main.width, main.height);
 			this.white.resize(main.width, main.height);
@@ -340,7 +364,7 @@ public final class FrameGen {
 	 * The frame's image is final (blitFromTexture): the interpolation and the images to show go into the frame's command
 	 * buffer; once it completes they're shown (mcf_submit), the generated one first.
 	 */
-	void frame(GpuTextureView view, long layer) {
+	void frame(MetalTexture.View view, long layer) {
 		if (this.layerSet == null || this.layerSet != layer) {
 			try {
 				N.LAYER.invokeExact(layer);
@@ -351,7 +375,7 @@ public final class FrameGen {
 		}
 		MetalTexture src = MetalTexture.of(view);
 		this.encoder.flushClear(src);
-		long real = ((MetalTexture.View) view).handle;
+		long real = view.handle;
 		boolean generated = this.pair && !this.uiBroken;
 		int k = this.refreshes;
 		try {
@@ -362,7 +386,7 @@ public final class FrameGen {
 				int check = (int) N.INTERPOLATE.invokeExact(this.encoder.enc, this.fg, dt, this.near, this.far, this.fov, this.aspect, this.interpolatedLast ? 0 : 1);
 				long early = dump == null ? 0 : this.readback((long) N.TEXTURE.invokeExact(this.fg, 2));
 				int what = "motion".equals(VIEW) ? 3 : "generated".equals(VIEW) || !this.uiDrawn ? 2 : 1;
-				long black = MetalBridge.textureHandle(this.black.getColorTexture()), white = MetalBridge.textureHandle(this.white.getColorTexture());
+				long black = ((MetalTexture) this.black.getColorTexture()).handle, white = ((MetalTexture) this.white.getColorTexture()).handle;
 				g = (int) N.IMAGE.invokeExact(this.encoder.ctx, this.encoder.enc, this.fg, what, 0L, black, white);
 				if (dump != null) this.dump(dump, src, early, check);
 				if (DUMP.contains("seq")) this.recordSequence(dt, !this.interpolatedLast, check);
@@ -644,8 +668,8 @@ public final class FrameGen {
 		long[] buffers;
 		try {
 			buffers = new long[] {this.readback((long) N.TEXTURE.invokeExact(this.fg, 1)), early, this.readback((long) N.TEXTURE.invokeExact(this.fg, 0)),
-				this.readback(real.handle), this.readback(MetalBridge.textureHandle(this.black.getColorTexture())),
-				this.readback(MetalBridge.textureHandle(this.white.getColorTexture())), this.readback((long) N.TEXTURE.invokeExact(this.fg, 2))};
+				this.readback(real.handle), this.readback(((MetalTexture) this.black.getColorTexture()).handle),
+				this.readback(((MetalTexture) this.white.getColorTexture()).handle), this.readback((long) N.TEXTURE.invokeExact(this.fg, 2))};
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

@@ -26,6 +26,8 @@ import org.lwjgl.system.MemoryUtil;
 final class MetalEncoder implements CommandEncoderBackend {
 	private static final int MAX_IN_FLIGHT = Integer.getInteger("mcopt.metal.inFlight", 2);
 	private static final long CPU_COPY_MAX = 256 << 10;
+	static final boolean PRESENT_QUEUE = "true".equals(System.getProperty("mcopt.metal.presentQueue")) || "acquire".equals(System.getProperty("mcopt.metal.presentQueue"));
+	static final boolean PRESENT_ACQUIRE = "acquire".equals(System.getProperty("mcopt.metal.presentQueue"));
 
 	final long ctx;
 	final long enc;
@@ -322,8 +324,24 @@ final class MetalEncoder implements CommandEncoderBackend {
 	public void writeTimestamp(GpuQueryPool pool, int index) {
 	}
 
+	void upscale(long fx, MetalTexture color, MetalTexture depth, MetalTexture dst, long reproject, float jitterX, float jitterY, float motionSign,
+		boolean reset) {
+		if (this.currentPass != null) throw new IllegalStateException("Cannot upscale inside a render pass");
+		this.flushClear(color);
+		this.flushClear(depth);
+		dst.pendingColorClear = null;
+		this.pendingClears.remove(dst);
+		Native.fxUpscale(this.enc, fx, color.handle, depth.handle, dst.handle, reproject, jitterX, jitterY, motionSign, reset ? 1 : 0);
+	}
+
+	void presentAcquire(long layer, GpuTextureView view) {
+		this.flushClear(view.texture());
+		Native.presentQueuedAcquire(this.enc, layer, ((MetalTexture.View) view).handle, -1);
+	}
+
 	void presentTexture(long drawable, GpuTextureView view) {
 		this.flushClear(view.texture());
-		Native.present(this.enc, drawable, ((MetalTexture.View) view).handle);
+		if (PRESENT_QUEUE) Native.presentQueued(this.enc, drawable, ((MetalTexture.View) view).handle);
+		else Native.present(this.enc, drawable, ((MetalTexture.View) view).handle);
 	}
 }

@@ -31,12 +31,12 @@ abstract class GameRendererFrameGenMixin {
 		target = "Lnet/minecraft/client/renderer/GameRenderer;render3dHud(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lnet/minecraft/client/renderer/state/OptionsRenderState;Z)V"))
 	private void mcopt$frameGenLevel(GameRenderer self, CameraRenderState camera, PlayerRenderState player, OptionsRenderState options, boolean consistentDepth,
 		Operation<Void> original, @Local Matrix4f projectionMatrix) {
-		if (FrameGen.ENABLED) FrameGen.levelDrawn(this.mainRenderTarget, projectionMatrix, camera, consistentDepth);
+		if (FrameGen.enabled()) FrameGen.levelDrawn(this.mainRenderTarget, projectionMatrix, camera, consistentDepth);
 		original.call(self, camera, player, options, consistentDepth);
 	}
 
 	@Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/fog/FogRenderer;endFrame()V"))
 	private void mcopt$frameGenBeforeGui(CallbackInfo ci) {
-		if (FrameGen.ENABLED) FrameGen.beforeGui(this.mainRenderTarget, this.gameRenderState.shouldRenderLevel);
+		if (FrameGen.enabled()) FrameGen.beforeGui(this.mainRenderTarget, this.gameRenderState.shouldRenderLevel);
 	}
 }
