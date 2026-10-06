@@ -36,6 +36,7 @@ final class MetalDevice implements GpuDeviceBackend {
 	private final long ctx;
 	private final MetalEncoder encoder;
 	private final DeviceInfo info;
+	private final Allocations allocations;
 	private final ShaderSource shaderSource;
 	private final Map<RenderPipeline, MetalPipeline> pipelines = new IdentityHashMap<>();
 
@@ -54,7 +55,9 @@ final class MetalDevice implements GpuDeviceBackend {
 				DeviceType.INTEGRATED);
 		}
 		this.encoder = new MetalEncoder(this.ctx);
-		this.encoder.device = this;
+		this.allocations = new Allocations(this.ctx, this.encoder);
+		String diag = System.getProperty("mcopt.metal.cbdiag");
+		if (diag != null) Native.diagEnable(Double.parseDouble(diag));
 		if (mcopt.metal.cpu.Cpu.PASS || mcopt.metal.cpu.Cpu.CMD_AHEAD) Native.cpuFlags(mcopt.metal.cpu.Cpu.nativeFlags(mcopt.metal.cpu.Cpu.PASS));
 	}
 
@@ -84,12 +87,7 @@ final class MetalDevice implements GpuDeviceBackend {
 
 	@Override
 	public GpuTexture createTexture(@Nullable String label, @GpuTexture.Usage int usage, GpuFormat format, int width, int height, int layers, int mips) {
-		int mtlUsage = ((usage & GpuTexture.USAGE_TEXTURE_BINDING) != 0 ? 1 : 0) | ((usage & GpuTexture.USAGE_RENDER_ATTACHMENT) != 0 ? 4 : 0);
-		if (format == GpuFormat.D32_FLOAT) mtlUsage |= 1;
-		boolean cube = (usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0;
-		long handle = Native.textureNew(this.ctx, MetalConst.pixelFormat(format), width, height, layers, mips, Math.max(1, mtlUsage), cube ? 1 : 0);
-		if (handle == 0) throw new IllegalStateException("Couldn't create " + width + "x" + height + " " + format + " texture " + label);
-		return new MetalTexture(this.encoder, handle, usage, label == null ? "" : label, format, width, height, layers, mips);
+		return this.allocations.texture(label, usage, format, width, height, layers, mips);
 	}
 
 	@Override
@@ -104,7 +102,7 @@ final class MetalDevice implements GpuDeviceBackend {
 
 	@Override
 	public GpuBuffer createBuffer(@Nullable Supplier<String> label, @GpuBuffer.Usage int usage, long size) {
-		return new MetalBuffer(this.encoder, Native.bufferNew(this.ctx, size), usage, size);
+		return this.allocations.buffer(label, usage, size);
 	}
 
 	@Override

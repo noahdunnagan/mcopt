@@ -1,11 +1,9 @@
 package mcopt.metal;
 
-import com.mojang.renderpearl.api.commands.CommandEncoder;
 import com.mojang.renderpearl.api.device.BackendCreationException;
 import com.mojang.renderpearl.api.device.GpuBackend;
 import com.mojang.renderpearl.api.device.GpuDebugOptions;
 import com.mojang.renderpearl.api.device.GpuDevice;
-import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import com.mojang.renderpearl.frontend.FrontendGpuDevice;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.sdl.SDLVideo;
@@ -33,9 +31,5 @@ public final class MetalBackend implements GpuBackend {
 	@Override
 	public GpuDevice createDevice(GpuDebugOptions debugOptions) throws BackendCreationException {
 		return new FrontendGpuDevice(new MetalDevice());
-	}
-
-	public static boolean isMetal(CommandEncoder encoder) {
-		return encoder instanceof FrontendCommandEncoder frontend && frontend.backend() instanceof MetalEncoder;
 	}
 }

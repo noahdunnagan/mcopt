@@ -12,6 +12,7 @@ import org.lwjgl.glfw.GLFW;
 public final class MetalBackend implements GpuBackend {
 	private static volatile boolean active;
 	static @Nullable MetalEncoder encoder;
+	static MetalDevice device;
 
 	public static boolean isActive() {
 		return active;
@@ -37,6 +38,7 @@ public final class MetalBackend implements GpuBackend {
 		MetalDevice metal = new MetalDevice(shaderSource);
 		GpuDevice device = new GpuDevice(metal, criticalShaderLoader);
 		encoder = (MetalEncoder) metal.createCommandEncoder();
+		MetalBackend.device = metal;
 		active = true;
 		return device;
 	}

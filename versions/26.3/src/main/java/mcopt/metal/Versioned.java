@@ -2,6 +2,8 @@ package mcopt.metal;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import org.jspecify.annotations.Nullable;
@@ -20,5 +22,9 @@ final class Versioned {
 
 	static TextureTarget target(String label, RenderTarget like) {
 		return new TextureTarget(label, like.width, like.height, like.getColorTexture().getFormat(), like.getDepthTexture().getFormat());
+	}
+
+	static RenderPass.RenderArea renderArea(RenderPassDescriptor descriptor) {
+		return descriptor.renderArea();
 	}
 }

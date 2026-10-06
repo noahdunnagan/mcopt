@@ -6,7 +6,7 @@ import com.mojang.blaze3d.textures.GpuSampler;
 import java.util.OptionalDouble;
 
 final class MetalSampler extends GpuSampler {
-	final long handle;
+	private final long handle;
 	private final AddressMode u, v;
 	private final FilterMode min, mag;
 	private final int anisotropy;
@@ -28,6 +28,10 @@ final class MetalSampler extends GpuSampler {
 		long handle = Native.samplerNew(ctx, MetalConst.addressMode(u), MetalConst.addressMode(v), MetalConst.filter(min), MetalConst.filter(mag),
 			mipFilter, Math.max(1, anisotropy), (float) Math.max(0.25, lod));
 		return new MetalSampler(handle, u, v, min, mag, anisotropy, maxLod);
+	}
+
+	long handle() {
+		return this.handle;
 	}
 
 	@Override

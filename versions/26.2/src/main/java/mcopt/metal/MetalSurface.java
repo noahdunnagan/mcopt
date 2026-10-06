@@ -14,7 +14,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 	private static final double PACE_MARGIN_S = Double.parseDouble(System.getProperty("mcopt.metal.paceMarginMs", "2")) / 1000;
 	private static final int DRAWABLES = Integer.getInteger("mcopt.metal.drawables", 0);
 	private static final boolean PACE_SYNC = Boolean.getBoolean("mcopt.metal.paceSync");
-	private static final boolean PACE_ADAPT = Boolean.getBoolean("mcopt.metal.paceAdapt");
+	static final boolean PACE_ADAPT = Boolean.getBoolean("mcopt.metal.paceAdapt");
 	private static @Nullable MetalSurface current;
 	private boolean paced;
 	private GpuSurface.@Nullable Configuration config;

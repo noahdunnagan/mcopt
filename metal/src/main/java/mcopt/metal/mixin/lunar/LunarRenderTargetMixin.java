@@ -4,7 +4,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.commands.CommandEncoder;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import mcopt.metal.MetalBackend;
+import mcopt.metal.MetalBridge;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Coerce;
@@ -16,8 +16,8 @@ abstract class LunarRenderTargetMixin {
 	@Inject(method = "bridge$blitToRenderTarget", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
 	private void mcopt$blitOnMetal(@Coerce Object target, int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1,
 		int dstY1, boolean linear, CallbackInfo ci) {
+		if (!MetalBridge.metalActive()) return;
 		CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-		if (!MetalBackend.isMetal(encoder)) return;
 		ci.cancel();
 		GpuTexture src = ((RenderTarget) (Object) this).getColorTexture();
 		GpuTexture dst = target instanceof RenderTarget rt ? rt.getColorTexture() : null;
@@ -31,6 +31,6 @@ abstract class LunarRenderTargetMixin {
 
 	@Inject(method = "bridge$unbindFrameBuffer", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
 	private void mcopt$unbindOnMetal(CallbackInfo ci) {
-		if (MetalBackend.isMetal(RenderSystem.getDevice().createCommandEncoder())) ci.cancel();
+		if (MetalBridge.metalActive()) ci.cancel();
 	}
 }

@@ -3,12 +3,8 @@ package mcopt.metal;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.commands.GpuQueryPool;
-import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
 import com.mojang.renderpearl.api.pipeline.IndexType;
-import com.mojang.renderpearl.api.pipeline.UniformType;
-import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.api.RenderPassBackend;
-import com.mojang.renderpearl.util.TextureViewAndSampler;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
@@ -26,13 +22,13 @@ import org.lwjgl.system.MemoryUtil;
  * Uniforms are bound lazily at the next draw, and only when the slot's content actually changed: the frontend re-sends
  * every uniform on each pipeline switch, but Metal's argument slots survive pipeline changes, so most of that is a no-op.
  */
-final class MetalRenderPass implements RenderPassBackend {
+abstract class MetalRenderPass implements RenderPassBackend {
 	private static final int MAX_UNIFORMS = MetalConst.PUSH_CONSTANTS_INDEX;
 
-	private final MetalEncoder encoder;
-	private final long enc;
+	final MetalEncoder encoder;
+	final long enc;
 	private final int areaX, areaY, areaWidth, areaHeight;
-	private @Nullable MetalPipeline pipeline;
+	@Nullable MetalPipeline pipeline;
 	private final Object[] pending = new Object[MAX_UNIFORMS];
 	private final Object[] bound = new Object[MAX_UNIFORMS];
 	private int dirtyUpTo;
@@ -80,15 +76,18 @@ final class MetalRenderPass implements RenderPassBackend {
 	public void popDebugGroup() {
 	}
 
-	@Override
-	public void setPipeline(BackendRenderPipeline pipeline) {
-		MetalPipeline p = (MetalPipeline) pipeline;
+	void setMetalPipeline(@Nullable MetalPipeline p) {
+		if (p == null) {
+			this.flushTerrain(false);
+			this.pipeline = null;
+			return;
+		}
 		if (this.delegate != null) {
 			this.pipeline = p;
 			this.slots = this.delegate.setPipeline(this.enc, p, p.uniforms);
-			Arrays.fill(this.pending, 0, p.uniforms.size(), null);
+			Arrays.fill(this.pending, 0, p.slots.size(), null);
 			Arrays.fill(this.bound, null);
-			this.dirtyUpTo = p.uniforms.size();
+			this.dirtyUpTo = p.slots.size();
 			return;
 		}
 		boolean terrain = p.pulled != 0 && this.hasDepth, record = terrain && this.encoder.terrain.split;
@@ -98,8 +97,8 @@ final class MetalRenderPass implements RenderPassBackend {
 		this.pipeline = p;
 		this.recording = record ? p : null;
 		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
-		Arrays.fill(this.pending, 0, p.uniforms.size(), null);
-		this.dirtyUpTo = p.uniforms.size();
+		Arrays.fill(this.pending, 0, p.slots.size(), null);
+		this.dirtyUpTo = p.slots.size();
 	}
 
 	/**
@@ -125,6 +124,7 @@ final class MetalRenderPass implements RenderPassBackend {
 
 	/** With a delegate: false when this draw must not be encoded (pipeline not taken over, or the delegate says so). */
 	private boolean delegated() {
+		if (this.pipeline == null) return false;
 		return this.delegate == null || this.slots != null && this.delegate.beforeDraw(this.enc);
 	}
 
@@ -147,7 +147,7 @@ final class MetalRenderPass implements RenderPassBackend {
 	/** After MetalTerrain split the pass: the reopened encoder has none of the frontend's state, so bind it all again. */
 	private void rebind() {
 		Arrays.fill(this.bound, null);
-		this.dirtyUpTo = Objects.requireNonNull(this.pipeline).uniforms.size();
+		this.dirtyUpTo = Objects.requireNonNull(this.pipeline).slots.size();
 		this.bindUniforms(0);
 		Native.scissor(this.enc, this.scissor[0], this.scissor[1], this.scissor[2], this.scissor[3]);
 		for (int slot = 0; slot < this.vertexBuffers.length; slot++) {
@@ -163,38 +163,36 @@ final class MetalRenderPass implements RenderPassBackend {
 
 	/** Binds again what p's draws are bound with now (its uniforms and the scissor), for MetalTerrain to draw more of them after a split. */
 	private Runnable restorer(MetalPipeline p) {
-		Object[] values = Arrays.copyOf(this.bound, p.uniforms.size());
+		Object[] values = Arrays.copyOf(this.bound, p.slots.size());
 		int[] scissor = this.scissor.clone();
 		return () -> {
-			for (int i = 0; i < values.length; i++) this.bindUniform(p.uniforms.get(i), i, values[i]);
+			for (int i = 0; i < values.length; i++) this.bindUniform(p.slots.get(i), i, values[i]);
 			Native.scissor(this.enc, scissor[0], scissor[1], scissor[2], scissor[3]);
 		};
 	}
 
-	private static int uniform(MetalPipeline p, String name) {
-		for (int i = 0; i < p.uniforms.size(); i++) {
-			if (p.uniforms.get(i).name().equals(name)) return i;
+	static int uniform(MetalPipeline p, String name) {
+		for (int i = 0; i < p.slots.size(); i++) {
+			if (p.slots.get(i).name().equals(name)) return i;
 		}
 		throw new IllegalStateException(p.name + " has no uniform " + name);
 	}
 
-	@Override
-	public void setUniform(int index, @Nullable Object value) {
+	void setUniformAt(int index, @Nullable Object value) {
 		this.pending[index] = value;
 		this.dirtyUpTo = Math.max(this.dirtyUpTo, index + 1);
 	}
 
-	@Override
-	public void pushConstants(ByteBuffer value) {
-		if (this.encoder.probe != null && value.remaining() >= 12) this.encoder.probe.pushConstants(MemoryUtil.memAddress(value));
+	void pushConstants(long address, int length) {
+		if (this.encoder.probe != null && length >= 12) this.encoder.probe.pushConstants(address);
 		if (this.recording != null) {
-			this.encoder.terrain.pushConstants(MemoryUtil.memAddress(value), value.remaining());
+			this.encoder.terrain.pushConstants(address, length);
 			return;
 		}
-		Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(value), value.remaining());
-		if (MetalTerrain.OCC && value.remaining() <= this.pushConstants.length) {
-			this.pushConstantsLength = value.remaining();
-			value.get(value.position(), this.pushConstants, 0, this.pushConstantsLength);
+		Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, address, length);
+		if (MetalTerrain.OCC && length <= this.pushConstants.length) {
+			this.pushConstantsLength = length;
+			MemoryUtil.memByteBuffer(address, length).get(0, this.pushConstants, 0, length);
 		}
 	}
 
@@ -232,7 +230,7 @@ final class MetalRenderPass implements RenderPassBackend {
 	private void bindUniforms(int drawCount) {
 		this.draws += drawCount;
 		if (this.dirtyUpTo == 0) return;
-		List<BindGroupLayout.UniformDescription> uniforms = Objects.requireNonNull(this.pipeline).uniforms;
+		List<MetalUniform> uniforms = Objects.requireNonNull(this.pipeline).slots;
 		for (int i = 0; i < this.dirtyUpTo && i < uniforms.size(); i++) {
 			Object value = this.pending[i];
 			if (value == null) throw new IllegalStateException("Missing uniform " + uniforms.get(i).name());
@@ -243,25 +241,25 @@ final class MetalRenderPass implements RenderPassBackend {
 		this.dirtyUpTo = 0;
 	}
 
-	private void bindUniform(BindGroupLayout.UniformDescription uniform, int index, Object value) {
+	private void bindUniform(MetalUniform uniform, int index, Object value) {
 		int i = index;
 		if (this.delegate != null) {
 			if (this.slots == null || index >= this.slots.length || this.slots[index] < 0) return;
 			i = this.slots[index];
 		}
-		switch (uniform.type()) {
+		switch (uniform.kind()) {
 			case UNIFORM_BUFFER -> {
 				GpuBufferSlice slice = (GpuBufferSlice) value;
 				Native.buffer(this.enc, i, this.encoder.use(slice.buffer()).handle, slice.offset());
 			}
-			case COMBINED_IMAGE_SAMPLER -> {
-				TextureViewAndSampler ts = (TextureViewAndSampler) value;
+			case SAMPLED_IMAGE -> {
+				MetalUniform.Texture ts = (MetalUniform.Texture) value;
 				Native.texture(this.enc, i, ((MetalTexture.View) ts.view()).handle, ((MetalSampler) ts.sampler()).handle());
 				if (this.delegate != null) this.delegate.texture(this.enc, i, ts.view());
 			}
 			case TEXEL_BUFFER -> {
 				GpuBufferSlice slice = (GpuBufferSlice) value;
-				var format = Objects.requireNonNull(uniform.gpuFormat());
+				var format = Objects.requireNonNull(uniform.format());
 				long view = TexelViews.ON && TexelViews.active ? TexelViews.get(this.encoder, slice, MetalConst.pixelFormat(format), format.blockSize()) // opt-in
 					: this.texelViews.computeIfAbsent(slice, s -> {
 					long handle = Native.textureBuffer(this.encoder.ctx, this.encoder.use(s.buffer()).handle, MetalConst.pixelFormat(format), s.offset(),
@@ -296,7 +294,7 @@ final class MetalRenderPass implements RenderPassBackend {
 		MetalBuffer kept = this.encoder.terrain.cullClouds((GpuBufferSlice) this.bound[at], faces, (GpuBufferSlice) this.bound[uniform(p, "DynamicTransforms")],
 			(GpuBufferSlice) this.bound[uniform(p, "Projection")], (GpuBufferSlice) this.bound[uniform(p, "CloudInfo")]);
 		if (kept == null) return false;
-		this.bindUniform(p.uniforms.get(at), at, kept.slice(MetalTerrain.CLOUD_FACES, MetalTerrain.cloudFacesLength(faces)));
+		this.bindUniform(p.slots.get(at), at, kept.slice(MetalTerrain.CLOUD_FACES, MetalTerrain.cloudFacesLength(faces)));
 		this.bound[at] = null; // so the next draw binds the frontend's faces again
 		this.dirtyUpTo = Math.max(this.dirtyUpTo, at + 1);
 		Native.drawIndexedIndirect(this.enc, kept.handle, 0, 1);
@@ -330,11 +328,11 @@ final class MetalRenderPass implements RenderPassBackend {
 		if (!p.name.startsWith("sodium:") || !p.name.contains("terrain") || this.vertexBuffer0 == null) return;
 		GpuBufferSlice globals = null;
 		long atlas = 0, atlasSampler = 0;
-		for (int i = 0; i < p.uniforms.size(); i++) {
-			String name = p.uniforms.get(i).name();
+		for (int i = 0; i < p.slots.size(); i++) {
+			String name = p.slots.get(i).name();
 			if (name.equals("u_Globals")) globals = (GpuBufferSlice) this.bound[i];
 			if (name.equals("u_BlockTex")) {
-				TextureViewAndSampler ts = (TextureViewAndSampler) this.bound[i];
+				MetalUniform.Texture ts = (MetalUniform.Texture) this.bound[i];
 				atlas = ((MetalTexture.View) ts.view()).handle;
 				atlasSampler = ((MetalSampler) ts.sampler()).handle();
 			}
