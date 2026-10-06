@@ -21,7 +21,7 @@ for dir in versions/*/; do
 	mkdir -p "dist/$name"
 	cp "$jar" "dist/$name/$name.jar"
 	cp LICENSE NOTICE "dist/$name/"
-	sed "s/@VERSION@/$version/g" RELEASE-README.txt > "dist/$name/README.txt"
+	sed -e "s/@VERSION@/$version/g" -e "s/@MC@/$mc/g" RELEASE-README.txt > "dist/$name/README.txt"
 	(cd dist && zip -qrX "$name.zip" "$name")
 	echo "dist/$name.zip"
 	cp "$jar" "dist/mcopt-$version.jar"
