@@ -9,5 +9,5 @@
 	"environment": "client",
 	"entrypoints": { "preLaunch": ["mcopt.metal.Preload"] },
 	"mixins": ["mcopt-metal.mixins.json", "mcopt-metal-qos.mixins.json", "mcopt-metal-cpu.mixins.json", "mcopt-metal-chunk.mixins.json", "mcopt-metal-lod.mixins.json", "mcopt-metal-gen.mixins.json", "mcopt-metal-startup.mixins.json", "mcopt-metal-alloc.mixins.json", "mcopt-metal-probe.mixins.json", "mcopt-metal-chunkio.mixins.json", "mcopt-metal-edge.mixins.json", "mcopt-metal-lunar.mixins.json"],
-	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25", "sodium": ">=0.9.3-alpha.1 <0.9.4-alpha" }
+	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25", "sodium": ">=0.9.2 <0.9.4-alpha" }
 }
