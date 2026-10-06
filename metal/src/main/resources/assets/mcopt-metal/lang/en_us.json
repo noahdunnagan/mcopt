@@ -1,9 +1,9 @@
 {
 	"mcopt.options.page": "Metal Renderer",
 	"mcopt.options.render_scale": "Render Scale (MetalFX)",
-	"mcopt.options.render_scale.tooltip": "Renders the world at a lower resolution and rebuilds full resolution with MetalFX temporal upscaling. Lower is faster. Turns Frame Generation off while on.",
+	"mcopt.options.render_scale.tooltip": "Only helps when the GPU is the limit (4K/5K fullscreen, shaderpacks, smaller Macs). MetalFX costs about 2 ms per frame, so at high fps it lowers fps. Renders the world at a lower resolution and rebuilds full resolution with MetalFX temporal upscaling. Turns Frame Generation off while on.",
 	"mcopt.options.frame_generation": "Frame Generation",
-	"mcopt.options.frame_generation.tooltip": "Generates a frame between every two rendered frames with MetalFX frame interpolation, shown on the display's refresh. Paced keeps the same pacing without generated frames. Not available together with Render Scale.",
+	"mcopt.options.frame_generation.tooltip": "The fps counter shows real frames only: they are capped at half your display's refresh rate, and a generated frame is shown between each pair, so motion runs at the full refresh rate. Uses MetalFX frame interpolation with vsync on. Paced keeps the same pacing without generated frames. Not available together with Render Scale.",
 	"mcopt.options.frame_generation.off": "Off",
 	"mcopt.options.frame_generation.on": "On",
 	"mcopt.options.frame_generation.paced": "Paced"
