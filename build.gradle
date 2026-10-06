@@ -28,10 +28,28 @@ subprojects {
 		accessWidenerPath = file('src/main/resources/mcopt-metal.accesswidener')
 	}
 
-	sourceSets.main {
-		java.srcDir new File(shared, 'java')
-		resources.srcDir new File(shared, 'resources')
+	def remapFile = file('remap.properties')
+	def sharedJava = new File(shared, 'java')
+	if (remapFile.exists()) {
+		def remap = new Properties()
+		remapFile.withReader { remap.load(it) }
+		def pairs = remap.collectMany { k, v ->
+			def names = [k, v].collect { it.substring(it.lastIndexOf('.') + 1) }
+			[[k, v], [k.replace('.', '/'), v.replace('.', '/')]] + (names[0] == names[1] ? [] : [names])
+		}
+		def generated = layout.buildDirectory.dir('generated/sources/shared')
+		def remapShared = tasks.register('remapShared', Sync) {
+			from sharedJava
+			into generated
+			inputs.property 'remap', pairs.toString()
+			filter { String line -> pairs.inject(line) { l, p -> l.replaceAll('(?<![\\w$])' + java.util.regex.Pattern.quote(p[0]) + '(?![\\w$])', java.util.regex.Matcher.quoteReplacement(p[1])) } }
+		}
+		sourceSets.main.java.srcDir generated
+		tasks.named('compileJava') { dependsOn remapShared }
+	} else {
+		sourceSets.main.java.srcDir sharedJava
 	}
+	sourceSets.main.resources.srcDir new File(shared, 'resources')
 
 	def nativeOut = layout.buildDirectory.dir('natives/natives')
 

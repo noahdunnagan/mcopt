@@ -1,7 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin",
-	"compatibilityLevel": "JAVA_25",
-	"client": ["CameraFxMixin", "FramerateLimiterMixin", "GameRendererFrameGenMixin", "GameRendererFxMixin", "GuiRendererFrameGenMixin", "PreferredGraphicsApiMixin"],
-	"injectors": { "defaultRequire": 1 }
-}
