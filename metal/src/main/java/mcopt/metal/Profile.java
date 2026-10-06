@@ -159,6 +159,27 @@ public final class Profile {
 		}
 	}
 
+	public static synchronized void save(String key, String value) {
+		System.setProperty(key, value);
+		Path cfg = gameDir().resolve("config").resolve("mcopt.properties");
+		try {
+			java.util.List<String> lines = Files.isRegularFile(cfg) ? new java.util.ArrayList<>(Files.readAllLines(cfg, StandardCharsets.UTF_8)) : new java.util.ArrayList<>();
+			java.util.regex.Pattern line = java.util.regex.Pattern.compile("\\s*" + java.util.regex.Pattern.quote(key) + "\\s*[=:].*");
+			boolean found = false;
+			for (int i = 0; i < lines.size(); i++) {
+				if (line.matcher(lines.get(i)).matches()) {
+					lines.set(i, key + "=" + value);
+					found = true;
+				}
+			}
+			if (!found) lines.add(key + "=" + value);
+			Files.createDirectories(cfg.getParent());
+			Files.write(cfg, lines, StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			System.out.println("[mcopt] profile: can't write " + cfg + ": " + e);
+		}
+	}
+
 	private static Path gameDir() {
 		try {
 			return net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir();

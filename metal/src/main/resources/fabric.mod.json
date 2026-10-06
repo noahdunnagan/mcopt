@@ -7,7 +7,7 @@
 	"license": ["Apache-2.0", "LicenseRef-PolyForm-Shield-1.0.0"],
 	"authors": ["Noah Dunnagan"],
 	"environment": "client",
-	"entrypoints": { "preLaunch": ["mcopt.metal.Preload"] },
+	"entrypoints": { "preLaunch": ["mcopt.metal.Preload"], "sodium:config_api_user": ["mcopt.metal.MetalOptions"] },
 	"mixins": ["${mixins}"],
 	"accessWidener": "mcopt-metal.accesswidener",
 	"depends": { "fabricloader": ">=0.19.5", "minecraft": "${minecraft_dep}", "java": ">=25", "sodium": "${sodium_dep}" }
