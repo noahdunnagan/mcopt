@@ -20,6 +20,8 @@ import com.mojang.blaze3d.vulkan.glsl.SpvSampler;
 import com.mojang.blaze3d.vulkan.glsl.SpvUniformBuffer;
 import com.mojang.blaze3d.vulkan.glsl.SpvVariable;
 import com.mojang.logging.LogUtils;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -124,8 +126,37 @@ final class MetalPipeline implements CompiledRenderPipeline {
 
 	private static IntermediaryShaderModule module(ShaderSource source, RenderPipeline pipeline, Identifier id, ShaderType type) throws ShaderCompileException {
 		String text = source.get(id, type);
+		if (text == null) text = injectedSource(id, type);
 		if (text == null) throw new ShaderCompileException("Couldn't find source for " + type + " shader " + id);
 		return glsl.createIntermediary(id.toDebugFileName(), GlslPreprocessor.injectDefines(text, pipeline.getShaderDefines()), type);
+	}
+
+	private static @Nullable List<ShaderSource> injected;
+
+	private static @Nullable String injectedSource(Identifier id, ShaderType type) {
+		if (injected == null) {
+			injected = new ArrayList<>();
+			for (String name : List.of("com.mojang.blaze3d.vulkan.VulkanDevice", "com.mojang.blaze3d.opengl.GlDevice")) {
+				try {
+					for (Field field : Class.forName(name).getDeclaredFields()) {
+						if (!Modifier.isStatic(field.getModifiers()) || !ShaderSource.class.isAssignableFrom(field.getType())) continue;
+						field.setAccessible(true);
+						if (field.get(null) instanceof ShaderSource shaderSource) injected.add(shaderSource);
+					}
+				} catch (ReflectiveOperationException | RuntimeException e) {
+					LOGGER.warn("Couldn't read shader sources from {}: {}", name, e.toString());
+				}
+			}
+		}
+		for (ShaderSource shaderSource : injected) {
+			try {
+				String text = shaderSource.get(id, type);
+				if (text != null) return text;
+			} catch (RuntimeException e) {
+				LOGGER.debug("Injected shader source failed for {}: {}", id, e.toString());
+			}
+		}
+		return null;
 	}
 
 	private static void addSlots(List<MetalUniform> slots, IntermediaryShaderModule shader, RenderPipeline pipeline) throws ShaderCompileException {
