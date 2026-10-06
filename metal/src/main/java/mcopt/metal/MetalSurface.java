@@ -7,10 +7,9 @@ import com.mojang.renderpearl.backend.api.GpuSurfaceBackend;
 import java.util.Collection;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.sdl.SDLMetal;
 
 /**
- * A CAMetalLayer on the SDL window. The drawable is fetched at blit time rather than frame start: holding it for
+ * A CAMetalLayer on the game window. The drawable is fetched at blit time rather than frame start: holding it for
  * the whole frame only adds latency and can stall on a drawable the display hasn't released yet.
  */
 final class MetalSurface implements GpuSurfaceBackend {
@@ -43,8 +42,8 @@ final class MetalSurface implements GpuSurfaceBackend {
 	MetalSurface(long ctx, MetalEncoder encoder, long window) {
 		this.ctx = ctx;
 		this.encoder = encoder;
-		this.view = SDLMetal.SDL_Metal_CreateView(window);
-		this.layer = SDLMetal.SDL_Metal_GetLayer(this.view);
+		this.view = Versioned.createView(window);
+		this.layer = Versioned.layer(this.view);
 		current = this;
 	}
 
@@ -115,7 +114,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 	public void close() {
 		FrameGen frameGen = FrameGen.enabled() ? FrameGen.get(this.encoder) : null;
 		if (frameGen != null) frameGen.close();
-		SDLMetal.SDL_Metal_DestroyView(this.view);
+		Versioned.destroyView(this.view);
 		if (current == this) current = null;
 	}
 }

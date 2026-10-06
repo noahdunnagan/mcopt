@@ -7,6 +7,7 @@ import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import org.jspecify.annotations.Nullable;
+import org.lwjgl.sdl.SDLMetal;
 
 final class Versioned {
 	private Versioned() {
@@ -26,5 +27,17 @@ final class Versioned {
 
 	static RenderPass.RenderArea renderArea(RenderPassDescriptor descriptor) {
 		return descriptor.renderArea();
+	}
+
+	static long createView(long window) {
+		return SDLMetal.SDL_Metal_CreateView(window);
+	}
+
+	static long layer(long view) {
+		return SDLMetal.SDL_Metal_GetLayer(view);
+	}
+
+	static void destroyView(long view) {
+		SDLMetal.SDL_Metal_DestroyView(view);
 	}
 }

@@ -41,8 +41,8 @@ subprojects {
 		def remapShared = tasks.register('remapShared', Sync) {
 			from sharedJava
 			into generated
-			inputs.property 'remap', pairs.toString()
-			filter { String line -> pairs.inject(line) { l, p -> l.replaceAll('(?<![\\w$])' + java.util.regex.Pattern.quote(p[0]) + '(?![\\w$])', java.util.regex.Matcher.quoteReplacement(p[1])) } }
+			outputs.upToDateWhen { false }
+			filter { String line -> pairs.inject(line) { l, p -> l.replaceAll((p[0].contains('/') ? '' : '(?<![\\w$])') + java.util.regex.Pattern.quote(p[0]) + '(?![\\w$])', java.util.regex.Matcher.quoteReplacement(p[1])) } }
 		}
 		sourceSets.main.java.srcDir generated
 		tasks.named('compileJava') { dependsOn remapShared }
