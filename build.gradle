@@ -1,0 +1,67 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
+}
+
+def shared = file('metal/src/main')
+
+subprojects {
+	apply plugin: 'net.fabricmc.fabric-loom'
+
+	version = "${mod_version}+mc${minecraft_version}"
+	base.archivesName = 'mcopt-metal'
+
+	repositories {
+		// Sodium at build time only (compileOnly): mcopt hooks into it at runtime and never bundles it.
+		maven {
+			url = 'https://api.modrinth.com/maven'
+			content { includeGroup 'maven.modrinth' }
+		}
+	}
+
+	dependencies {
+		minecraft "com.mojang:minecraft:${minecraft_version}"
+		implementation "net.fabricmc:fabric-loader:${loader_version}"
+		compileOnly "maven.modrinth:sodium:${sodium_version}"
+	}
+
+	sourceSets.main {
+		java.srcDir new File(shared, 'java')
+		resources.srcDir new File(shared, 'resources')
+	}
+
+	def nativeOut = layout.buildDirectory.dir('natives/natives')
+
+	tasks.register('compileNative', Exec) {
+		def sources = ['mcmetal.m', 'mcterrain.m', 'mcprobe.m', 'mcframegen.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m'].collect { new File(shared, "native/$it") }
+		def output = nativeOut.get().file('libmcmetal.dylib').asFile
+		inputs.files sources, new File(shared, 'native/mcmetal.h'), new File(shared, 'native/lodmesh.h')
+		outputs.file output
+		doFirst { output.parentFile.mkdirs() }
+		commandLine(['clang', '-fno-objc-arc', '-O2', '-Wall', '-arch', 'arm64', '-mmacosx-version-min=15.0', '-dynamiclib', '-install_name', '@rpath/libmcmetal.dylib',
+			'-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
+	}
+
+	processResources {
+		dependsOn 'compileNative'
+		from(layout.buildDirectory.dir('natives'))
+		def props = [version: version, minecraft_dep: minecraft_dep, sodium_dep: sodium_dep, mixins: mixins.split(',').collect { "\"${it}.mixins.json\"" }.join(', ')]
+		inputs.properties props
+		filesMatching('fabric.mod.json') { expand props }
+	}
+
+	// Double-clicking the jar (java -jar) explains that it's a Fabric mod and how to install it.
+	jar {
+		manifest { attributes 'Main-Class': 'mcopt.metal.InstallHelp', 'Implementation-Version': version }
+		// Apache-2.0 asks for LICENSE and NOTICE in every copy; LICENSES/ holds the other licences NOTICE refers to.
+		from(rootProject.file('LICENSE'))
+		from(rootProject.file('NOTICE'))
+		from(rootProject.file('LICENSES')) { into 'LICENSES' }
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.release = 25
+		// the far terrain's Vector API noise control (LodNoiseVector, opt-in -Dmcopt.lod.nativeNoise=vector): loaded only when the game runs with
+		// --add-modules jdk.incubator.vector
+		if (it.name == 'compileJava') it.options.compilerArgs += ['--add-modules', 'jdk.incubator.vector']
+	}
+}

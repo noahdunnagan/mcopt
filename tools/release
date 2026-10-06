@@ -1,25 +1,29 @@
 #!/bin/sh
-# Build the mod and package it, locally (nothing is uploaded anywhere):
-# - dist/mcopt-VERSION.jar: the Metal mod, natives inside. Put it in the mods folder next to Sodium.
-# - dist/mcopt-metal-VERSION.zip: mcopt-metal-VERSION/{mcopt-metal-VERSION.jar, README.txt, LICENSE, NOTICE}
+# Build the mod and package it, locally (nothing is uploaded anywhere), once per Minecraft version in versions/:
+# - dist/mcopt-VERSION+mcMC.jar: the Metal mod, natives inside. Put it in the mods folder next to Sodium.
+# - dist/mcopt-metal-VERSION+mcMC.zip: mcopt-metal-VERSION+mcMC/{mcopt-metal-VERSION+mcMC.jar, README.txt, LICENSE, NOTICE}
 #   (README.txt is RELEASE-README.txt with the version filled in).
 # Sodium is never bundled: it's a separate download.
 # Usage: tools/release
 set -eu
 cd "$(dirname "$0")/.."
 die() { echo "$*" >&2; exit 1; }
-version=$(sed -n "s/^version = '\(.*\)'$/\1/p" metal/build.gradle)
-[ -n "$version" ] || die "No version in metal/build.gradle."
-./gradlew :metal:build -q --console=plain
-jar=metal/build/libs/metal-$version.jar
-[ -f "$jar" ] || die "The build made no $jar."
-name=mcopt-metal-$version
-rm -rf "dist/$name" "dist/$name.zip"
-mkdir -p "dist/$name"
-cp "$jar" "dist/$name/$name.jar"
-cp LICENSE NOTICE "dist/$name/"
-sed "s/@VERSION@/$version/g" RELEASE-README.txt > "dist/$name/README.txt"
-(cd dist && zip -qrX "$name.zip" "$name")
-echo "dist/$name.zip"
-cp "$jar" "dist/mcopt-$version.jar"
-echo "dist/mcopt-$version.jar"
+mod=$(sed -n 's/^mod_version=//p' gradle.properties)
+[ -n "$mod" ] || die "No mod_version in gradle.properties."
+./gradlew build -q --console=plain
+for dir in versions/*/; do
+	mc=$(basename "$dir")
+	version=$mod+mc$mc
+	jar=${dir}build/libs/mcopt-metal-$version.jar
+	[ -f "$jar" ] || die "The build made no $jar."
+	name=mcopt-metal-$version
+	rm -rf "dist/$name" "dist/$name.zip"
+	mkdir -p "dist/$name"
+	cp "$jar" "dist/$name/$name.jar"
+	cp LICENSE NOTICE "dist/$name/"
+	sed "s/@VERSION@/$version/g" RELEASE-README.txt > "dist/$name/README.txt"
+	(cd dist && zip -qrX "$name.zip" "$name")
+	echo "dist/$name.zip"
+	cp "$jar" "dist/mcopt-$version.jar"
+	echo "dist/mcopt-$version.jar"
+done
