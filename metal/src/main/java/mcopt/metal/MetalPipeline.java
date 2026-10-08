@@ -4,6 +4,7 @@ import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.PolygonMode;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.ShaderType;
 import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.api.SpvModule;
@@ -90,8 +91,9 @@ final class MetalPipeline implements BackendRenderPipeline {
 		long vlib = 0, flib = 0, plib = 0;
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			long err = stack.nmalloc(1, 4096);
-			Translated v = translate(vertex.module(), info.uniforms().size());
-			Translated f = translate(fragment.module(), info.uniforms().size());
+			boolean points = info.primitiveTopology() == PrimitiveTopology.POINTS;
+			Translated v = translate(vertex.module(), info.uniforms().size(), points);
+			Translated f = translate(fragment.module(), info.uniforms().size(), false);
 			if (DUMP_DIR != null) dump(info.name(), v, f);
 			if (OVERRIDE_DIR != null) {
 				v = override(info.name() + ".vs.metal", v);
@@ -260,18 +262,19 @@ final class MetalPipeline implements BackendRenderPipeline {
 	}
 	static int mslHits, mslMisses;
 
-	private static Translated translate(SpvModule module, int uniformCount) {
-		if (!MSL_CACHE) return translateNow(module, uniformCount);
+	private static Translated translate(SpvModule module, int uniformCount, boolean points) {
+		if (!MSL_CACHE) return translateNow(module, uniformCount, points);
 		String key;
 		try {
 			java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
 			md.update(MSL_KEY_SALT.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 			md.update((byte) module.type().ordinal());
 			md.update(java.nio.ByteBuffer.allocate(4).putInt(uniformCount).array());
+			md.update((byte) (points ? 1 : 0));
 			md.update(module.spv().duplicate());
 			key = java.util.HexFormat.of().formatHex(md.digest());
 		} catch (java.security.NoSuchAlgorithmException e) {
-			return translateNow(module, uniformCount);
+			return translateNow(module, uniformCount, points);
 		}
 		java.nio.file.Path file = MSL_DIR.resolve(key);
 		try {
@@ -280,13 +283,13 @@ final class MetalPipeline implements BackendRenderPipeline {
 			if (nl > 0) {
 				mslHits++;
 				Translated hit = new Translated(text.substring(nl + 1), text.substring(0, nl));
-				if (MSL_MODE.equals("verify") && !hit.equals(translateNow(module, uniformCount))) mslMismatches++;
+				if (MSL_MODE.equals("verify") && !hit.equals(translateNow(module, uniformCount, points))) mslMismatches++;
 				return hit;
 			}
 		} catch (java.io.IOException missing) {
 			// not cached yet
 		}
-		Translated t = translateNow(module, uniformCount);
+		Translated t = translateNow(module, uniformCount, points);
 		mslMisses++;
 		try {
 			java.nio.file.Files.createDirectories(MSL_DIR);
@@ -299,7 +302,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 		return t;
 	}
 
-	private static Translated translateNow(SpvModule module, int uniformCount) {
+	private static Translated translateNow(SpvModule module, int uniformCount, boolean points) {
 		boolean vertex = module.type() == ShaderType.VERTEX;
 		int model = vertex ? Spv.SpvExecutionModelVertex : Spv.SpvExecutionModelFragment;
 		IntBuffer spirv = module.spv().asIntBuffer();
@@ -318,6 +321,9 @@ final class MetalPipeline implements BackendRenderPipeline {
 				spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_MACOS);
 				spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_MSL_TEXTURE_BUFFER_NATIVE, true);
 				if (vertex) spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_FLIP_VERTEX_Y, true);
+				// Metal rejects a pipeline whose vertex function writes point size unless it draws points; GL and Vulkan just
+				// ignore gl_PointSize for lines and triangles, so mods do write it there.
+				if (vertex) spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_MSL_ENABLE_POINT_SIZE_BUILTIN, points);
 				check(context, spvc_compiler_install_compiler_options(compiler, options), "install options");
 				for (int i = 0; i < uniformCount; i++) bind(stack, compiler, model, 0, i, i);
 				bind(stack, compiler, model, SPVC_MSL_PUSH_CONSTANT_DESC_SET, SPVC_MSL_PUSH_CONSTANT_BINDING, MetalConst.PUSH_CONSTANTS_INDEX);
