@@ -37,7 +37,7 @@ public final class ChunkIo {
 
 	/** Whether the mixin named (simple class name) applies: RegionFileStorageMixin belongs to saveSkip. */
 	public static boolean mixinEnabled(String simpleName) {
-		return "RegionFileStorageMixin".equals(simpleName) && (SAVE_SKIP_ON || SAVE_PROBE);
+		return ("RegionFileStorageMixin".equals(simpleName) || "RegionFileStorageAccess".equals(simpleName)) && (SAVE_SKIP_ON || SAVE_PROBE);
 	}
 
 	private static final Map<String, LongAdder> COUNTERS = new ConcurrentHashMap<>();

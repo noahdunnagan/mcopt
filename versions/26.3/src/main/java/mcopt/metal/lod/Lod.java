@@ -1,7 +1,5 @@
 package mcopt.metal.lod;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -146,7 +144,7 @@ public final class Lod {
 	private static @Nullable Lod get() {
 		if (instance != null || failed || !LodConfig.ENABLED) return instance;
 		try {
-			Object encoder = MetalBridge.encoder(((FrontendCommandEncoder) RenderSystem.getDevice().createCommandEncoder()).backend());
+			Object encoder = MetalBridge.currentEncoder();
 			if (encoder == null) {
 				System.out.println("mcopt-lod: the game isn't on the Metal backend; far terrain disabled");
 				failed = true;

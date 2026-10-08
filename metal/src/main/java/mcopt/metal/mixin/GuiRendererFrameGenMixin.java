@@ -21,6 +21,6 @@ abstract class GuiRendererFrameGenMixin {
 	private void mcopt$frameGenGuiLayers(GuiRenderer self, Supplier<String> label, RenderTarget target, GpuBufferSlice transforms, int start, int end,
 		Operation<Void> original) {
 		original.call(self, label, target, transforms, start, end);
-		if (FrameGen.ENABLED) FrameGen.guiDrawn(start, layer -> original.call(self, label, layer, transforms, start, end));
+		if (FrameGen.enabled()) FrameGen.guiDrawn(start, layer -> original.call(self, label, layer, transforms, start, end));
 	}
 }

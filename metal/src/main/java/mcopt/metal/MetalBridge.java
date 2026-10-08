@@ -113,6 +113,14 @@ public final class MetalBridge {
 	}
 
 	/** The backend's encoder behind a frontend command encoder, or null when the game isn't on the Metal backend. */
+	public static @Nullable Object currentEncoder() {
+		return Versioned.encoder();
+	}
+
+	public static boolean metalActive() {
+		return Versioned.metalActive();
+	}
+
 	public static @Nullable Object encoder(CommandEncoderBackend backend) {
 		return backend instanceof MetalEncoder e ? e : null;
 	}

@@ -3,6 +3,6 @@
 	"package": "mcopt.metal.mixin.cpu",
 	"plugin": "mcopt.metal.mixin.cpu.CpuMixinPlugin",
 	"compatibilityLevel": "JAVA_25",
-	"client": ["CullReuseManagerMixin", "CullNearbyMixin", "CullTreeAccess", "CullBiForestAccess", "CullMultiForestAccess", "CullTaskTreeAccess", "LoadingFpsMixin", "CullSectionInfoMixin", "ListRegionCacheMixin", "EntityBoxSodiumMixin", "EntityBoxVanillaMixin", "EntityRendererBoxInvoker", "ListAbMixin", "EntityBoxAbMixin", "ModelLoopMixin", "ModelAbMixin", "DrawMergeMixin", "DrawMergeAbMixin", "AbFrameMixin", "LeashMixin", "LeashAbMixin"],
+	"client": ["CullReuseManagerMixin", "CullNearbyMixin", "CullTreeAccess", "CullBiForestAccess", "CullMultiForestAccess", "CullTaskTreeAccess", "LoadingFpsMixin", "CullSectionInfoMixin", "ListRegionCacheMixin", "EntityBoxSodiumMixin", "EntityBoxVanillaMixin", "EntityRendererBoxInvoker", "ListAbMixin", "EntityBoxAbMixin", "ModelLoopMixin", "ModelAbMixin", "DrawMergeMixin", "DrawMergeAbMixin", "LeashMixin", "LeashAbMixin"],
 	"injectors": { "defaultRequire": 1 }
 }

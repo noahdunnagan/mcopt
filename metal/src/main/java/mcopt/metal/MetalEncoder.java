@@ -323,12 +323,12 @@ final class MetalEncoder implements CommandEncoderBackend {
 			}
 			if (continued == 0) this.encoderIndex++;
 		}
-		var area = descriptor.renderArea();
+		var area = Versioned.renderArea(descriptor);
 		if (redirect != null && redirect.depth() != 0) {
-			this.currentPass = new MetalRenderPass(this, true, 0, 0, redirect.width(), redirect.height(), redirect.delegate());
+			this.currentPass = new MetalPass(this, true, 0, 0, redirect.width(), redirect.height(), redirect.delegate());
 			return this.currentPass;
 		}
-		this.currentPass = new MetalRenderPass(this, depth != null, area.x(), area.y(), area.width(), area.height(),
+		this.currentPass = new MetalPass(this, depth != null, area.x(), area.y(), area.width(), area.height(),
 			redirect != null ? redirect.delegate() : keptDelegate);
 		return this.currentPass;
 	}
@@ -428,7 +428,11 @@ final class MetalEncoder implements CommandEncoderBackend {
 		this.deferClear(depthTexture, null, clearDepth);
 	}
 
-	@Override
+	public void clearColorAndDepthTextures(GpuTexture colorTexture, Vector4fc clearColor, GpuTexture depthTexture, double clearDepth,
+		int x, int y, int width, int height) {
+		this.clearColorAndDepthTextures(colorTexture, clearColor, depthTexture, clearDepth, x, y, width, height, 0);
+	}
+
 	public void clearColorAndDepthTextures(GpuTexture colorTexture, Vector4fc clearColor, GpuTexture depthTexture, double clearDepth,
 		int x, int y, int width, int height, int mip) {
 		if (mip == 0 && x == 0 && y == 0 && width == colorTexture.getWidth(0) && height == colorTexture.getHeight(0)) {

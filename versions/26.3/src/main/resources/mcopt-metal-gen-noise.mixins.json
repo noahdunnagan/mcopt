@@ -1,0 +1,8 @@
+{
+	"required": true,
+	"package": "mcopt.metal.mixin.gen",
+	"plugin": "mcopt.metal.mixin.gen.GenMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": ["GenNoiseChunkMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

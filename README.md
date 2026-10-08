@@ -6,13 +6,16 @@ A Minecraft performance mod for Apple Silicon Macs. **Very much alpha:** expect 
 
 - An Apple Silicon Mac on macOS 26 or later
 - Java 25
-- Minecraft 26.3 with Fabric Loader 0.19.5
-- Sodium 0.9.3, a separate download:
-  [sodium-fabric-0.9.3-alpha.1+mc26.3.jar](https://cdn.modrinth.com/data/AANobbMI/versions/v4PSXean/sodium-fabric-0.9.3-alpha.1%2Bmc26.3.jar)
+- Minecraft 26.3 or 26.2 with Fabric Loader 0.19.5
+- Sodium, a separate download:
+  - 26.3: [sodium-fabric-0.9.2+mc26.3.jar](https://cdn.modrinth.com/data/AANobbMI/versions/bAZQdGpg/sodium-fabric-0.9.2%2Bmc26.3.jar) (stable) or
+    [sodium-fabric-0.9.3-alpha.1+mc26.3.jar](https://cdn.modrinth.com/data/AANobbMI/versions/v4PSXean/sodium-fabric-0.9.3-alpha.1%2Bmc26.3.jar)
+  - 26.2: [sodium-fabric-0.9.2+mc26.2.jar](https://modrinth.com/mod/sodium/version/mc26.2-0.9.2-fabric)
 
 ## Install
 
-Drop the mcopt jar and the Sodium jar into `~/Library/Application Support/minecraft/mods`. Done.
+Drop the mcopt jar for your Minecraft version (`mcopt-metal-VERSION+mc26.3.jar` or `+mc26.2.jar`) and the Sodium jar into
+`~/Library/Application Support/minecraft/mods`. Done.
 
 To see your fps all the time, press F3 + F6, find fps in the list and set it to Always.
 
@@ -20,7 +23,9 @@ To see your fps all the time, press F3 + F6, find fps in the list and set it to 
 
 - The perf profile is on by default and picks its settings for your Mac.
 - `profile=none` in `config/mcopt.properties` turns it off. The first launch writes that file.
-- Far terrain is an experimental opt-in: `mcopt.lod=true` in the same file, for Macs with 10 or more GPU cores.
+- Far terrain is an experimental opt-in: `mcopt.lod=true` in the same file, for Macs with 10 or more GPU cores (26.3 only).
+- Video Settings has a Metal Renderer page (under mcopt Metal in Sodium's menu) with Render Scale (MetalFX upscaling) and
+  Frame Generation (MetalFX frame interpolation). Both switch live and are saved to `config/mcopt.properties`.
 
 ## Numbers
 
@@ -33,7 +38,8 @@ fps spinning / flying, same test world, 1920x1080, render distance 16, VSync off
 
 ## Known issues
 
-- Only Sodium 0.9.3 works. With another version, Fabric stops at launch and says which one to install.
+- Only Sodium 0.9.2 and 0.9.3 work (0.9.2 on 26.2). With another version, Fabric stops at launch and says which one to install.
+- Far terrain and native worldgen noise are 26.3 only: 26.2's world generator is a different engine.
 - Mods that call OpenGL directly can't draw on the Metal backend. `-Dmcopt.metal=false` switches mcopt's renderer off.
 - Distant Horizons only works on OpenGL. mcopt detects it and stays on OpenGL, so it runs without the Metal renderer's
   speedup; mcopt's other optimizations stay on. (0.2.0-alpha.1 crashed with it instead: add `mcopt.metal=false` to
@@ -41,6 +47,15 @@ fps spinning / flying, same test world, 1920x1080, render distance 16, VSync off
 - Far terrain is experimental. On Macs with fewer than 10 GPU cores, it costs most of the fps.
 - With fewer than 10 GPU cores, or 8 GB of memory or less, the profile leaves out the bigger chunk cache.
 - With Lithium, C2ME or ScalableLux installed, some of mcopt's chunk patches step aside on purpose.
+- Lunar Client: supported. Lunar's renderer patches assume OpenGL or Vulkan; mcopt detects Lunar and handles those paths on
+  Metal (`-Dmcopt.lunar=false` turns that off). A scaled Lunar framebuffer blit is skipped on Metal rather than drawn.
+
+## Building
+
+`./gradlew build` makes one jar per Minecraft version in `versions/*/build/libs`. Code shared by every version lives in
+`metal/src/main`; each `versions/<mc>` holds only what differs (the backend's API entry points, the window, a few mixins)
+and its `gradle.properties` (Minecraft, Sodium, dependency ranges, mixin configs). Shared code is written against 26.3's
+class names; `versions/26.2/remap.properties` maps them to 26.2's before compiling. `tools/release` packages every version.
 
 ## Plans
 

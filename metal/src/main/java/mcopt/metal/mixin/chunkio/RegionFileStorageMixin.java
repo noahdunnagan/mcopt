@@ -3,6 +3,7 @@ package mcopt.metal.mixin.chunkio;
 import java.io.DataInputStream;
 import java.io.IOException;
 import mcopt.metal.chunkio.ChunkIo;
+import mcopt.metal.chunkio.RegionFiles;
 import mcopt.metal.chunkio.RegionSkip;
 import net.minecraft.SharedConstants;
 import net.minecraft.nbt.CompoundTag;
@@ -27,9 +28,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class RegionFileStorageMixin {
 	@Shadow @Final private RegionStorageInfo info;
 
-	@Shadow
-	protected abstract RegionFile getRegionFile(ChunkPos pos, boolean create) throws IOException;
-
 	@Inject(method = "write", at = @At("HEAD"), cancellable = true)
 	private void mcopt$skipUnchanged(ChunkPos pos, CompoundTag value, CallbackInfo ci) {
 		if (value == null || SharedConstants.DEBUG_DONT_SAVE_WORLD) return;
@@ -38,7 +36,7 @@ abstract class RegionFileStorageMixin {
 		RegionSkip.Result result;
 		RegionSkip.Buffers buffers = null;
 		try {
-			RegionFile region = this.getRegionFile(pos, false);
+			RegionFile region = RegionFiles.existing((RegionFileStorage) (Object) this, pos);
 			if (region == null || !region.hasChunk(pos)) {
 				result = RegionSkip.Result.NO_STORED;
 			} else {

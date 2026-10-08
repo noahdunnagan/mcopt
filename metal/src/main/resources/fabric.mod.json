@@ -7,7 +7,8 @@
 	"license": ["Apache-2.0", "LicenseRef-PolyForm-Shield-1.0.0"],
 	"authors": ["Noah Dunnagan"],
 	"environment": "client",
-	"entrypoints": { "preLaunch": ["mcopt.metal.Preload"] },
-	"mixins": ["mcopt-metal.mixins.json", "mcopt-metal-qos.mixins.json", "mcopt-metal-cpu.mixins.json", "mcopt-metal-chunk.mixins.json", "mcopt-metal-lod.mixins.json", "mcopt-metal-gen.mixins.json", "mcopt-metal-startup.mixins.json", "mcopt-metal-alloc.mixins.json", "mcopt-metal-probe.mixins.json", "mcopt-metal-chunkio.mixins.json", "mcopt-metal-edge.mixins.json"],
-	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25", "sodium": ">=0.9.3-alpha.1 <0.9.4-alpha" }
+	"entrypoints": { "preLaunch": ["mcopt.metal.Preload"], "sodium:config_api_user": ["mcopt.metal.MetalOptions"] },
+	"mixins": ["${mixins}"],
+	"accessWidener": "mcopt-metal.accesswidener",
+	"depends": { "fabricloader": ">=0.19.5", "minecraft": "${minecraft_dep}", "java": ">=25", "sodium": "${sodium_dep}" }
 }
