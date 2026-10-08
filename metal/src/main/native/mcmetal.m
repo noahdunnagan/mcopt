@@ -1867,13 +1867,17 @@ static int pqFill(Enc *enc, id<MTLTexture> src) {
 			toTexture:st destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 		[b endEncoding];
 		[cmd(enc) encodeSignalEvent:pqEvent value:++pqValue];
+		// The pacer's lead is the frame's GPU time, measured here as mc_present does: the present command buffer completes
+		// only once the display releases its drawable, so timing that one would add up to a refresh or two of scanout.
+		double encodedAt = CACurrentMediaTime();
+		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> cb) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
 	}
 	return k;
 }
 
 // Draws staging slot `slot` into `drawable` on a pqQueue command buffer that first waits for the slot's fill, presents it,
 // and frees the slot when the GPU is done with it.
-static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wait, double queuedAt) {
+static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wait) {
 	Ctx *ctx = pqCtx;
 	id<MTLCommandBuffer> p = [pqQueue commandBuffer];
 	[p encodeWaitForEvent:pqEvent value:wait];
@@ -1887,10 +1891,7 @@ static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wai
 	[r setFragmentSamplerState:ctx->presentSampler atIndex:0];
 	[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 	[r endEncoding];
-	[p addCompletedHandler:^(id<MTLCommandBuffer> cb) {
-		gpuLatency += (CACurrentMediaTime() - queuedAt - gpuLatency) * 0.1;
-		atomic_store(&pqBusy[slot], 0);
-	}];
+	[p addCompletedHandler:^(id<MTLCommandBuffer> cb) { atomic_store(&pqBusy[slot], 0); }];
 	paceWatch(drawable);
 	[p presentDrawable:drawable];
 	[p commit];
@@ -1919,7 +1920,6 @@ static _Atomic int pqScheduled;
 static _Atomic long pqDropped;
 static CAMetalLayer *pqLayer;
 static long pqCadence[PQ_SLOTS];
-static double pqQueuedAt[PQ_SLOTS];
 static uint64_t pqAcq;  // this frame's hand-off, published by pqSubmit after the commit
 void mc_cadence_present(id<CAMetalDrawable> drawable, int slot);
 
@@ -1929,7 +1929,6 @@ int mc_present_queued_acquire(Enc *enc, CAMetalLayer *layer, id<MTLTexture> src,
 	if (pqAcq) atomic_store(&pqBusy[pqAcq & 3], 0);  // two presents in one frame: the newer one wins
 	pqLayer = layer;
 	pqCadence[k] = cadence;
-	pqQueuedAt[k] = CACurrentMediaTime();
 	pqAcq = pqValue << 2 | (uint64_t) k;
 	return 1;
 }
@@ -1947,7 +1946,7 @@ static void pqWork(void) {
 				continue;
 			}
 			if (pqCadence[slot] >= 0) mc_cadence_present(drawable, (int) pqCadence[slot]);
-			pqEncodePresent(drawable, slot, h >> 2, pqQueuedAt[slot]);
+			pqEncodePresent(drawable, slot, h >> 2);
 		}
 	}
 }
@@ -1972,7 +1971,7 @@ static void pqSubmit(void) {
 	if (pqAcq) pqPublish();
 	if (!pqDrawable) return;
 	@autoreleasepool {
-		pqEncodePresent(pqDrawable, pqSlot, pqWait, CACurrentMediaTime());
+		pqEncodePresent(pqDrawable, pqSlot, pqWait);
 	}
 	[pqDrawable release];
 	pqDrawable = nil;
