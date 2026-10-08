@@ -125,12 +125,16 @@ final class MetalPipeline implements CompiledRenderPipeline {
 	}
 
 	private static IntermediaryShaderModule module(ShaderSource source, RenderPipeline pipeline, Identifier id, ShaderType type) throws ShaderCompileException {
+		String key = type + " " + id;
 		String text = source.get(id, type);
 		if (text == null) text = injectedSource(id, type);
+		if (text == null) text = KNOWN_SOURCES.get(key);
 		if (text == null) throw new ShaderCompileException("Couldn't find source for " + type + " shader " + id);
+		KNOWN_SOURCES.put(key, text);
 		return glsl.createIntermediary(id.toDebugFileName(), GlslPreprocessor.injectDefines(text, pipeline.getShaderDefines()), type);
 	}
 
+	private static final Map<String, String> KNOWN_SOURCES = new HashMap<>();
 	private static @Nullable List<ShaderSource> injected;
 
 	private static @Nullable String injectedSource(Identifier id, ShaderType type) {
