@@ -2173,6 +2173,11 @@ static float4 sampleNearest(texture2d<float> source, sampler s, float2 uv, float
 #else
 #define RGSS_TRI 0
 #endif
+#ifdef OWN_RGSS_ONE
+#define RGSS_ONE 1
+#else
+#define RGSS_ONE 0
+#endif
 
 static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 pixelSize) {
 	float2 du = dfdx(uv);
@@ -2206,8 +2211,13 @@ static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 p
 		// -Dmcopt.own.rgssTri (opt-in): the atlas sampler's mip filter is linear, so one sample at the exact level blends the
 		// two levels around it as the manual mix below does (up to the hardware's level-fraction precision): 4 samples, not 8
 		rgssColor = float4(0.0);
-		for (int i = 0; i < 4; ++i) rgssColor += source.sample(s, uv + offsets[i] * pixelSize, level(mipLevelExact));
-		rgssColor *= 0.25;
+		// -Dmcopt.own.rgssOne (opt-in, NOT vanilla-exact): one sample at that level instead of the four rotated-grid ones, for the
+		// pixels where RGSS's weight is above 0 (far ones); near pixels are unchanged
+		if (RGSS_ONE) rgssColor = source.sample(s, uv, level(mipLevelExact));
+		else {
+			for (int i = 0; i < 4; ++i) rgssColor += source.sample(s, uv + offsets[i] * pixelSize, level(mipLevelExact));
+			rgssColor *= 0.25;
+		}
 		if (blendFactor >= 1.0f) return rgssColor;
 	} else {
 		float mipLevelLow = floor(mipLevelExact);
