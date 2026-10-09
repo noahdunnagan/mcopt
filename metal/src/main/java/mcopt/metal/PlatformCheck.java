@@ -9,7 +9,7 @@ import net.fabricmc.loader.impl.util.log.LogCategory;
 
 /**
  * Stops the launch, before any Metal class loads, on a machine the native library can't run on: it is arm64-only and
- * the mod supports macOS 26 and later. The message goes to the log in one line and to Fabric's own error dialog (the one it
+ * it uses Metal APIs from macOS 15 (residency sets). The message goes to the log in one line and to Fabric's own error dialog (the one it
  * shows for a missing dependency), then the game exits. The dialog's title line doesn't wrap, so it gets only the short
  * "NAME can't run on this computer."; the reason and the fix go in its details area, one row each (rows wrap). A plain
  * exception from preLaunch would only show up as "A mod crashed on startup!" with the reason buried in a stack trace.
@@ -64,7 +64,7 @@ final class PlatformCheck {
 	}
 
 	private static String problem(String os, String arch, String version) {
-		if (!os.startsWith("Mac")) return "It needs an Apple Silicon Mac (M1 or newer) with macOS 26 or later, and this computer runs " + os + ".";
+		if (!os.startsWith("Mac")) return "It needs an Apple Silicon Mac (M1 or newer) with macOS 15 or later, and this computer runs " + os + ".";
 		if (!arch.equals("aarch64") && !arch.equals("arm64")) {
 			return "It needs an Apple Silicon Mac (M1 or newer) and an Apple Silicon (arm64) Java, and this Java is " + arch
 				+ " (an Intel Mac, or an Intel Java running through Rosetta).";
@@ -75,8 +75,8 @@ final class PlatformCheck {
 		} catch (NumberFormatException e) {
 			return null; // unknown version string: let it try rather than block a working Mac
 		}
-		// A JDK built against an older SDK may see macOS 26 as "16.x" (Apple's compatibility numbering); there was no macOS 16.
-		if (major < 26 && major != 16) return "It needs macOS 26 or later, and this Mac runs macOS " + version + ". Update macOS in System Settings > General > Software Update.";
+		// macOS 26 may show up as "16.x" to a JDK built against an older SDK (Apple's compatibility numbering): fine either way.
+		if (major < 15) return "It needs macOS 15 or later, and this Mac runs macOS " + version + ". Update macOS in System Settings > General > Software Update.";
 		return null;
 	}
 }
