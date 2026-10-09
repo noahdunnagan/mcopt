@@ -7,6 +7,7 @@ typedef struct {
 	id<MTLLibrary> builtins;
 	id<MTLRenderPipelineState> present;  // flips the frame into the drawable (same row order as GL/Vulkan)
 	id<MTLSamplerState> presentSampler;
+	id<MTLSamplerState> presentSamplerLinear;  // a frame smaller than the drawable (-Dmcopt.renderScale)
 	NSMutableDictionary<NSNumber *, id<MTLRenderPipelineState>> *clearPipelines;  // keyed by attachment formats
 	id<MTLDepthStencilState> depthWrite, depthKeep;
 	id<MTLBuffer> fanIndices;  // {0, k+1, k+2} per triangle: Metal has no fans, so they're drawn as indexed triangle lists
