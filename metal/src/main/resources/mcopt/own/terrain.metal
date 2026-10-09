@@ -2163,6 +2163,12 @@ static float4 sampleNearest(texture2d<float> source, sampler s, float2 uv, float
 	return sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
 }
 
+#ifdef OWN_RGSS_VANILLA
+#define RGSS_EARLY 0
+#else
+#define RGSS_EARLY 1
+#endif
+
 static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 pixelSize) {
 	float2 du = dfdx(uv);
 	float2 dv = dfdy(uv);
@@ -2172,6 +2178,11 @@ static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 p
 	float transitionStart = minPixelSize * 1.0;
 	float transitionEnd = minPixelSize * 2.0;
 	float blendFactor = smoothstep(transitionStart, transitionEnd, maxTexelSize);
+	// the result below is mix(nearest, rgss, blendFactor): at 0 (a texel at least a pixel wide, most of a near view) that is the
+	// nearest sample exactly, so the eight RGSS samples are skipped (-Dmcopt.own.rgssEarly=false: always taken, as vanilla)
+	// (the nearest sample is taken first, once, so a SIMD group mixing near and far fragments doesn't pay for it twice)
+	float4 nearestColor = sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
+	if (RGSS_EARLY && blendFactor <= 0.0f) return nearestColor;
 	float duLength = length(du);
 	float dvLength = length(dv);
 	float minDerivative = min(duLength, dvLength);
@@ -2192,7 +2203,6 @@ static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 p
 	rgssColorLow *= 0.25;
 	rgssColorHigh *= 0.25;
 	float4 rgssColor = mix(rgssColorLow, rgssColorHigh, mipBlend);
-	float4 nearestColor = sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
 	return mix(nearestColor, rgssColor, blendFactor);
 }
 
