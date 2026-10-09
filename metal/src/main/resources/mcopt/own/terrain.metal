@@ -2168,6 +2168,11 @@ static float4 sampleNearest(texture2d<float> source, sampler s, float2 uv, float
 #else
 #define RGSS_EARLY 1
 #endif
+#ifdef OWN_RGSS_TRI
+#define RGSS_TRI 1
+#else
+#define RGSS_TRI 0
+#endif
 
 static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 pixelSize) {
 	float2 du = dfdx(uv);
@@ -2179,9 +2184,15 @@ static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 p
 	float transitionEnd = minPixelSize * 2.0;
 	float blendFactor = smoothstep(transitionStart, transitionEnd, maxTexelSize);
 	// the result below is mix(nearest, rgss, blendFactor): at 0 (a texel at least a pixel wide, most of a near view) that is the
-	// nearest sample exactly, so the eight RGSS samples are skipped (-Dmcopt.own.rgssEarly=false: always taken, as vanilla)
-	// (the nearest sample is taken first, once, so a SIMD group mixing near and far fragments doesn't pay for it twice)
-	float4 nearestColor = sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
+	// nearest sample exactly, so the RGSS samples are skipped (-Dmcopt.own.rgssEarly=false: always taken, as vanilla)
+	float4 nearestColor;
+	if (RGSS_TRI) {
+		// (at 1 the mix is the RGSS colour, up to a float rounding step: the nearest sample is skipped there too)
+		if (blendFactor < 1.0f) nearestColor = sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
+	} else {
+		// (the nearest sample is taken first, once, so a SIMD group mixing near and far fragments doesn't pay for it twice)
+		nearestColor = sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
+	}
 	if (RGSS_EARLY && blendFactor <= 0.0f) return nearestColor;
 	float duLength = length(du);
 	float dvLength = length(dv);
@@ -2189,20 +2200,30 @@ static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 p
 	float maxDerivative = max(duLength, dvLength);
 	float effectiveDerivative = sqrt(minDerivative * maxDerivative);
 	float mipLevelExact = max(0.0, log2(effectiveDerivative / minPixelSize));
-	float mipLevelLow = floor(mipLevelExact);
-	float mipLevelHigh = mipLevelLow + 1.0;
-	float mipBlend = fract(mipLevelExact);
 	const float2 offsets[4] = {float2(0.125, 0.375), float2(-0.125, -0.375), float2(0.375, -0.125), float2(-0.375, 0.125)};
-	float4 rgssColorLow = float4(0.0);
-	float4 rgssColorHigh = float4(0.0);
-	for (int i = 0; i < 4; ++i) {
-		float2 sampleUV = uv + offsets[i] * pixelSize;
-		rgssColorLow += source.sample(s, sampleUV, level(mipLevelLow));
-		rgssColorHigh += source.sample(s, sampleUV, level(mipLevelHigh));
+	float4 rgssColor;
+	if (RGSS_TRI) {
+		// -Dmcopt.own.rgssTri (opt-in): the atlas sampler's mip filter is linear, so one sample at the exact level blends the
+		// two levels around it as the manual mix below does (up to the hardware's level-fraction precision): 4 samples, not 8
+		rgssColor = float4(0.0);
+		for (int i = 0; i < 4; ++i) rgssColor += source.sample(s, uv + offsets[i] * pixelSize, level(mipLevelExact));
+		rgssColor *= 0.25;
+		if (blendFactor >= 1.0f) return rgssColor;
+	} else {
+		float mipLevelLow = floor(mipLevelExact);
+		float mipLevelHigh = mipLevelLow + 1.0;
+		float mipBlend = fract(mipLevelExact);
+		float4 rgssColorLow = float4(0.0);
+		float4 rgssColorHigh = float4(0.0);
+		for (int i = 0; i < 4; ++i) {
+			float2 sampleUV = uv + offsets[i] * pixelSize;
+			rgssColorLow += source.sample(s, sampleUV, level(mipLevelLow));
+			rgssColorHigh += source.sample(s, sampleUV, level(mipLevelHigh));
+		}
+		rgssColorLow *= 0.25;
+		rgssColorHigh *= 0.25;
+		rgssColor = mix(rgssColorLow, rgssColorHigh, mipBlend);
 	}
-	rgssColorLow *= 0.25;
-	rgssColorHigh *= 0.25;
-	float4 rgssColor = mix(rgssColorLow, rgssColorHigh, mipBlend);
 	return mix(nearestColor, rgssColor, blendFactor);
 }
 
