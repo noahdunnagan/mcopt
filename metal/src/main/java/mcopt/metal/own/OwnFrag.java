@@ -973,8 +973,10 @@ final class OwnFrag {
 			int uoccMode = OwnProbe.integer("frag.fine", c.fine) | (c.hull ? 256 : 0) | (c.diag == 1 ? 512 : 0) | (c.rpyr ? 1024 : 0) | (pyr << 13)
 				| (pyr == 0 && PYR_AUTO > 0 ? 1 << 15 | Math.min(255, PYR_AUTO / 64) << 16 : 0);
 			boolean late = OwnProbe.bool("frag.testLate", TEST_LATE) && (SPLIT_NEAR > 0 || SPLIT_A) && !c.rpyr && c.diag != 1;  // (the test reads the pyramid the first call built)
+			if (!late) this.terrain.tOccArm();
 			split = OwnNative.fragUocc(this.own, this.enc, this.cullFrame, this.cullFrameLength, this.fragFrame, FRAG_FRAME_BYTES, this.clipAddr, table, recs,
 				this.args, lists(c), uoccMode | (late ? 2048 : 0)) == 1;
+			this.terrain.tOccDisarm();
 			if (this.terrain.tracing()) {
 				System.out.println("mcopt-metal trace: compute encoder 'own frag unit occlusion' #" + OwnNative.lastComputeGroup() + " (the split, profiled like a pass)");
 			}
@@ -1068,8 +1070,10 @@ final class OwnFrag {
 
 	private void afterLater(Config c, boolean split, boolean late, int uoccMode, long table, long recs) {
 		if (split && late) {
+			this.terrain.tOccArm();
 			OwnNative.fragUocc(this.own, this.enc, this.cullFrame, this.cullFrameLength, this.fragFrame, FRAG_FRAME_BYTES, this.clipAddr, table, recs, this.args,
 				lists(c), uoccMode | 4096);
+			this.terrain.tOccDisarm();
 			if (this.terrain.tracing()) System.out.println("mcopt-metal trace: compute encoder 'own frag unit occlusion' (testLate's test) #" + OwnNative.lastComputeGroup());
 		} else if (split) {
 			OwnNative.split(this.own, this.enc);

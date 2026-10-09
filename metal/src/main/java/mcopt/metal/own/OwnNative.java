@@ -50,6 +50,7 @@ final class OwnNative {
 	private static final MethodHandle FRAG_TIE_RING = fn("mco_frag_tie_ring", false, null, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle FRAG_CLEAR = fn("mco_frag_clear", false, null, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle FRAG_TIE_VERIFY = fn("mco_frag_tie_verify", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static final MethodHandle T_OCC = fn("mco_t_occ", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle FRAG_UOCC_BUFFERS = fn("mco_frag_uocc_buffers", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle FRAG_A1_EXACT = fn("mco_frag_a1_exact", false, null, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle FRAG_EXACT_MASK = fn("mco_frag_exact_mask", false, null, JAVA_LONG, JAVA_INT, JAVA_INT);
@@ -517,6 +518,15 @@ final class OwnNative {
 		try {
 			if (OwnCapture.ON && OwnCapture.active()) OwnCapture.fragTieVerify(lists, on);
 			FRAG_TIE_VERIFY.invokeExact(own, lists, on ? 1 : 0);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	/** -Dmcopt.own.frag.tOcc: the translucent list (count at off in args) the next unit test also tests; 0: none. */
+	static void tOcc(long own, long list, long args, long off, int cap) {
+		try {
+			T_OCC.invokeExact(own, list, args, off, cap);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

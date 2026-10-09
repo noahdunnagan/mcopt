@@ -1018,6 +1018,64 @@ static bool fragTestBox(float3 lo, float3 hi, constant FragTest &ft, texture2d<f
 	return zmax >= far - 1e-6;
 }
 
+// -Dmcopt.own.frag.tOcc (with uocc): our translucent list's units tested against this frame's pyramid (the unit test's, of depth
+// drawn before the test: never nearer than the final depth), after the CPU filled the list (the frame is committed after both). A
+// hidden unit's entry gets bit 31 and own_t_compact then leaves it out of the draws (own_vs also skips a marked entry). Exact: a box
+// wholly behind the pyramid has no fragment that passes the depth test. Units without a box (lo 0, hi all 255) stay.
+kernel void own_t_occ(constant CullFrame &f [[buffer(0)]], constant FragTest &ft [[buffer(17)]], device const Section *sections [[buffer(1)]],
+	device const Rec *recs [[buffer(2)]], device uint *tl [[buffer(4)]], device uint *a [[buffer(5)]], constant uint &cap [[buffer(6)]],
+	texture2d<float, access::read> hiz [[texture(0)]], uint i [[thread_position_in_grid]]) {
+	// (a: the list's slot of our translucent arguments: [5] the entry count, [6] / [7] tested / hidden (measurement))
+	if (i >= min(a[5], cap) || (a[13] >> 31) != 0) return;
+	uint r = tl[i];
+	if ((r >> 31) != 0) return;
+	Rec rec = recs[r];
+	if ((rec.lo & 0xFFFFFFu) == 0 && (rec.hi & 0xFFFFFFu) == 0xFFFFFFu) return;
+	Section s = sections[rec.slot];
+	float3 o = float3(int3(s.x, s.y, s.z) - f.camBlock.xyz) + f.camOffset.xyz;
+	float3 lo = o + float3(int3(rec.lo & 255, (rec.lo >> 8) & 255, (rec.lo >> 16) & 255) - 16);
+	float3 hi = o + float3(int3(rec.hi & 255, (rec.hi >> 8) & 255, (rec.hi >> 16) & 255) - 16);
+	atomic_fetch_add_explicit((device atomic_uint *) (a + 6), 1, memory_order_relaxed);
+	if (!fragTestBox(lo, hi, ft, hiz)) {
+		tl[i] = r | 0x80000000u;
+		atomic_fetch_add_explicit((device atomic_uint *) (a + 7), 1, memory_order_relaxed);
+	}
+}
+
+// (tOcc) one threadgroup: each part of the list (rich [0, a[13]), lean [a[13], a[5])) compacted in place, in order, without the
+// entries own_t_occ marked; the part's instance count (a[1], a[9]) becomes what is left. Writes never pass the reads (an entry
+// moves only down, a chunk's reads all come before its writes).
+kernel void own_t_compact(device uint *tl [[buffer(4)]], device uint *a [[buffer(5)]], constant uint &cap [[buffer(6)]],
+	uint t [[thread_position_in_threadgroup]], uint n [[threads_per_threadgroup]], uint sl [[thread_index_in_simdgroup]],
+	uint sg [[simdgroup_index_in_threadgroup]], uint nsg [[simdgroups_per_threadgroup]]) {
+	threadgroup uint sums[32];
+	threadgroup uint total;
+	if ((a[13] >> 31) != 0) return;  // (the list wasn't filled after the arm: the CPU's counts stand)
+	uint at = min(a[5], cap), split = min(a[13], at);
+	for (uint part = 0; part < 2; part++) {
+		uint begin = part == 0 ? 0u : split, end = part == 0 ? split : at, out = begin;
+		for (uint c = begin; c < end; c += n) {
+			uint i = c + t;
+			uint e = i < end ? tl[i] : 0x80000000u;
+			uint keep = (e >> 31) == 0 ? 1u : 0u;
+			uint pre = simd_prefix_exclusive_sum(keep), sum = simd_sum(keep);
+			if (sl == 0) sums[sg] = sum;
+			threadgroup_barrier(mem_flags::mem_threadgroup);
+			if (sg == 0) {
+				uint v = sl < nsg ? sums[sl] : 0u;
+				uint ex = simd_prefix_exclusive_sum(v);
+				if (sl < nsg) sums[sl] = ex;
+				if (sl == nsg - 1) total = ex + v;
+			}
+			threadgroup_barrier(mem_flags::mem_threadgroup);
+			if (keep != 0) tl[out + sums[sg] + pre] = e;
+			out += total;
+			threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);
+		}
+		if (t == 0) a[part == 0 ? 1 : 9] = out - begin;
+	}
+}
+
 // The pyramid's mip 0 by a render pass (-Dmcopt.own.frag.rpyr): a fragment per mip-0 texel, the farthest of the 2 x 2 depth pixels it
 // covers, texels past the depth's edge 1.0 (as the tiled pyramid pads). Reading the pass's depth in a fragment stage rather than a
 // compute dispatch lets the next frame's level pass start its vertex work before this read is done.
@@ -1734,6 +1792,14 @@ vertex VOut own_vs(uint vid [[vertex_id]], uint iid [[instance_id]], constant Dr
 		uint le = F_GROUP ? lists[lb + (iid << grp.z) + gUnit] : qtab ? 0u : lists[lb + iid];
 		if (F_GROUP && le == 0xFFFFFFFFu) {
 			o.pos = float4(0, 0, -2, 1);  // (a sentinel past the list's units: outside the clip volume, as padding)
+			o.sphericalVertexDistance = 0;
+			putColor(o, float4(0));
+			o.texCoord0 = float2(0);
+			putRich(o, 0, 1);
+			return o;
+		}
+		if (TRANSLUCENT && !qtab && !F_GROUP && (le >> 31) != 0) {
+			o.pos = float4(0, 0, -2, 1);  // (-Dmcopt.own.frag.tOcc: a unit own_t_occ found hidden, as padding)
 			o.sphericalVertexDistance = 0;
 			putColor(o, float4(0));
 			o.texCoord0 = float2(0);
