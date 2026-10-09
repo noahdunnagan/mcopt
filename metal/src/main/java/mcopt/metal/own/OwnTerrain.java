@@ -102,6 +102,21 @@ public final class OwnTerrain {
 	 * one draw a frame whose instance order is vanilla's visible sections far to near.
 	 */
 	public static final boolean TRANSLUCENT = Boolean.getBoolean("mcopt.own.translucent");
+	/**
+	 * -Dmcopt.own.rgssEarly (default true): with RGSS texture filtering, a fragment whose blend weight is 0 (a texel at least a pixel
+	 * wide) returns the nearest sample without taking the eight RGSS samples (terrain.metal sampleRGSS; the same picture, bit for bit).
+	 */
+	private static final boolean RGSS_EARLY = Boolean.parseBoolean(System.getProperty("mcopt.own.rgssEarly", "true"));
+	/**
+	 * -Dmcopt.own.rgssTri: RGSS's two mip levels blended by the atlas sampler's linear mip filter (4 samples at the exact level instead
+	 * of 4 at each of the two levels around it), and no nearest sample where RGSS's blend weight is 1 (terrain.metal sampleRGSS).
+	 */
+	private static final boolean RGSS_TRI = Boolean.getBoolean("mcopt.own.rgssTri");
+	/**
+	 * -Dmcopt.own.rgssOne (with rgssTri; opt-in, not vanilla-exact): far pixels take one sample at RGSS's level instead of the four
+	 * rotated-grid ones. Distant textures may differ slightly from vanilla (most visibly as shimmer in motion).
+	 */
+	private static final boolean RGSS_ONE = Boolean.getBoolean("mcopt.own.rgssOne");
 	/** -Dmcopt.own.level=true: opaque terrain samples the atlas at a computed level instead of with gradients (see terrain.metal). */
 	private static final boolean LEVEL = Boolean.getBoolean("mcopt.own.level");
 	/**
@@ -449,7 +464,7 @@ public final class OwnTerrain {
 		this.encoder = encoder;
 		this.ctx = MetalBridge.ctx(encoder);
 		this.enc = MetalBridge.enc(encoder);
-		this.own = OwnNative.create(this.ctx, (OwnPosTable.ON ? "#define OWN_EXACT_POS 1\n" : "") + (OwnQrec.ON ? "#define OWN_QREC 1\n" : "") + (VCOUNT ? "#define OWN_VCOUNT 1\n" : "") + (TFLAT ? "#define OWN_TFLAT 1\n" : "") + (TPROBE > 0 ? "#define OWN_TPROBE " + TPROBE + "\n" : "") + (OwnFrag.EXACT_SHIFT != 2 ? "#define A1_SH " + OwnFrag.EXACT_SHIFT + "\n" : "") + resource("/mcopt/own/terrain.metal"), COMPACT, FAT, CPU_CLIP);
+		this.own = OwnNative.create(this.ctx, (OwnPosTable.ON ? "#define OWN_EXACT_POS 1\n" : "") + (OwnQrec.ON ? "#define OWN_QREC 1\n" : "") + (VCOUNT ? "#define OWN_VCOUNT 1\n" : "") + (TFLAT ? "#define OWN_TFLAT 1\n" : "") + (RGSS_EARLY ? "" : "#define OWN_RGSS_VANILLA 1\n") + (RGSS_TRI ? "#define OWN_RGSS_TRI 1\n" : "") + (RGSS_ONE ? "#define OWN_RGSS_ONE 1\n" : "") + (TPROBE > 0 ? "#define OWN_TPROBE " + TPROBE + "\n" : "") + (OwnFrag.EXACT_SHIFT != 2 ? "#define A1_SH " + OwnFrag.EXACT_SHIFT + "\n" : "") + resource("/mcopt/own/terrain.metal"), COMPACT, FAT, CPU_CLIP);
 		// -Dmcopt.own.hizTile=true: the per-quad path's pyramid in one tiled pass for its first five levels (padded to 32 texels)
 		applyNativeFlags();
 		// -Dmcopt.own.gputime=true: GPU timestamps of our compute encoders (cull, list build, pyramid + test), logged per 500 frames
