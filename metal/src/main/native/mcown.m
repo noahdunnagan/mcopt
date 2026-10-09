@@ -82,6 +82,11 @@ typedef struct {
 	// draws and lists (not retained: OwnFrag keeps them)
 	id<MTLComputePipelineState> uoccTest, uoccFinish, uoccTestF, uoccTestFB, uoccTestFG;
 	id<MTLBuffer> uoccVis, uoccT, uoccBArgs, uoccListsB;
+	// (-Dmcopt.own.frag.tOcc: our translucent list, its count at tOccOff in tOccArgs, its capacity; one use, set before the test)
+	id<MTLBuffer> tOccList, tOccArgs;
+	int64_t tOccOff;
+	uint32_t tOccCap;
+	id<MTLComputePipelineState> tOccK, tCompactK;
 	// -Dmcopt.own.frag.tieClose: the tie components' record rings (terrain.metal fragTiePromote; not retained: OwnTerrain keeps it)
 	id<MTLBuffer> tieRing;
 	// -Dmcopt.own.frag.tieCloseVerify: this frame's phase A lists (not retained) and the two check kernels (made on first use)
@@ -1551,6 +1556,14 @@ void mco_frag_uocc_buffers(Own *w, id<MTLBuffer> occVis, id<MTLBuffer> tList, id
 	w->uoccListsB = listsB;
 }
 
+// -Dmcopt.own.frag.tOcc: the translucent list the next unit test also tests (own_t_occ), nil: none.
+void mco_t_occ(Own *w, id<MTLBuffer> list, id<MTLBuffer> args, int64_t off, int cap) {
+	w->tOccList = list;
+	w->tOccArgs = args;
+	w->tOccOff = off;
+	w->tOccCap = (uint32_t) MAX(0, cap);
+}
+
 // -Dmcopt.own.frag.tieClose: the record rings of the tie components (a uint per record, OwnTerrain), nil: none.
 void mco_frag_tie_ring(Own *w, id<MTLBuffer> ring) {
 	w->tieRing = ring;
@@ -1707,6 +1720,29 @@ int mco_frag_uocc(Own *w, Enc *enc, const void *cullFrame, int cullLength, const
 	[c setBuffer:w->uoccListsB offset:0 atIndex:16];
 	[c setTexture:depth ? hizTex : nil atIndex:0];
 	[c dispatchThreadgroupsWithIndirectBuffer:args indirectBufferOffset:(NSUInteger) (lists * 8 + 19) * 4 threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+	if (w->tOccList && w->tOccCap > 0 && depth && ft[20] != 0) {
+		// (-Dmcopt.own.frag.tOcc: our translucent list against the same pyramid; it writes only the list's bit 31)
+		id<MTLComputePipelineState> tk = ownLazyKernel(w, &w->tOccK, "own_t_occ");
+		if (tk) {
+			uint32_t cap = w->tOccCap;
+			[c setComputePipelineState:tk];
+			[c setBuffer:w->tOccList offset:0 atIndex:4];
+			[c setBuffer:w->tOccArgs offset:(NSUInteger) w->tOccOff atIndex:5];
+			[c setBytes:&cap length:4 atIndex:6];
+			[c setTexture:hizTex atIndex:0];
+			[c dispatchThreads:MTLSizeMake(cap, 1, 1) threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+			id<MTLComputePipelineState> ck = ownLazyKernel(w, &w->tCompactK, "own_t_compact");
+			if (ck) {
+				// (the hidden entries left out, in order: the draws' instance counts shrink)
+				NSUInteger tg = MIN((NSUInteger) 1024, ck.maxTotalThreadsPerThreadgroup) / 32 * 32;
+				[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
+				[c setComputePipelineState:ck];
+				[c dispatchThreadgroups:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(tg, 1, 1)];
+			}
+		}
+	}
+	w->tOccList = nil;
+	w->tOccArgs = nil;
 	if (mco_uocc_enc) c = ownNextCompute(enc, c, @"own frag uocc finish", 8);
 	else [c memoryBarrierWithScope:MTLBarrierScopeBuffers];
 	// (vGroup / vArgsCopy: frag_uocc_finish_g and phase B's grouped arguments; else the base's frag_uocc_finish)
