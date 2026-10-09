@@ -4,7 +4,7 @@ A Minecraft performance mod for Apple Silicon Macs. No Sodium needed. VERY MUCH 
 worlds.
 
 You need
-- An Apple Silicon Mac (M1 or newer) on macOS 26 or later
+- An Apple Silicon Mac (M1 or newer) on macOS 15 or later
 - Java 25 (the official launcher and Prism download it for 26.3; nothing to install)
 - Minecraft: Java Edition 26.3
 - Fabric Loader 0.19.5 or newer for 26.3
@@ -29,7 +29,7 @@ The jar is a mod, not an app: double-clicking it only shows these install steps.
 For the most fps: Options > Video Settings, VSync off and Max Framerate Unlimited.
 Shows an fps counter in the top-left corner (hidden with F1 or F3; fn + F1 or fn + F3 on a Mac keyboard).
 
-On a computer the mod can't run on (not an Apple Silicon Mac, or macOS older than 26), the game stops at launch
+On a computer the mod can't run on (not an Apple Silicon Mac, or macOS older than 15), the game stops at launch
 and says what's missing; remove the mcopt jar from the mods folder to play there.
 To check it's working: press F3 (fn + F3 on a Mac keyboard); the bottom right says Metal 3 (mcopt).
 

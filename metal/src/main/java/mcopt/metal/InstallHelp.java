@@ -17,7 +17,7 @@ public final class InstallHelp {
 		String name = noSodium ? modName(json) : "mcopt Metal";
 		String text = noSodium ? withoutSodium(name, version) : "mcopt Metal" + (version == null ? "" : " " + version) + " is a Fabric mod for Minecraft: Java Edition 26.3, not an app to open.\n"
 			+ "\n"
-			+ "To install it (Apple Silicon Mac, macOS 26 or later):\n"
+			+ "To install it (Apple Silicon Mac, macOS 15 or later):\n"
 			+ "1. Install Fabric for Minecraft 26.3: https://fabricmc.net/use/installer/\n"
 			+ "2. Put this jar and Sodium 0.9.3 for 26.3 in your mods folder:\n"
 			+ "   ~/Library/Application Support/minecraft/mods (official launcher)\n"
@@ -34,7 +34,7 @@ public final class InstallHelp {
 	private static String withoutSodium(String name, String version) {
 		return name + (version == null ? "" : " " + version) + " is a Fabric mod for Minecraft: Java Edition 26.3, not an app to open.\n"
 			+ "\n"
-			+ "To install it (Apple Silicon Mac, macOS 26 or later):\n"
+			+ "To install it (Apple Silicon Mac, macOS 15 or later):\n"
 			+ "1. Install Fabric for Minecraft 26.3: https://fabricmc.net/use/installer/\n"
 			+ "2. Put this jar in your mods folder (no Sodium: take it out if it's there):\n"
 			+ "   ~/Library/Application Support/minecraft/mods (official launcher)\n"

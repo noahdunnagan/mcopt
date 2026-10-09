@@ -8,7 +8,7 @@ A Minecraft performance mod for Apple Silicon Macs. Since 0.3.0-alpha.1 it draws
 
 ## Requirements
 
-- An Apple Silicon Mac on macOS 26 or later
+- An Apple Silicon Mac on macOS 15 or later
 - Java 25 (the official launcher and Prism download it for 26.3; nothing to install)
 - Minecraft 26.3 with Fabric Loader 0.19.5 or newer
 
