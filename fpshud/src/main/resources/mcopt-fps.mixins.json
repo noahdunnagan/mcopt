@@ -1,7 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.fps.mixin",
-	"compatibilityLevel": "JAVA_25",
-	"client": ["HudMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

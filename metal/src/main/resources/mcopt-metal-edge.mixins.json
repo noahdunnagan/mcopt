@@ -1,9 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin.edge",
-	"plugin": "mcopt.metal.mixin.edge.EdgeMixinPlugin",
-	"compatibilityLevel": "JAVA_25",
-	"mixins": ["GenSignalMixin"],
-	"client": ["FramerateCapMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

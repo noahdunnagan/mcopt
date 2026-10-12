@@ -1,0 +1,102 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+	id 'legacy-looming' version "${loom_version}"
+}
+
+version = '0.1.0-alpha.1+1.8.9'
+group = 'mcopt'
+
+base {
+	archivesName = 'mcopt'
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	mappings(legacy.yarn(minecraft_version, yarn_build))
+	modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+}
+
+// The Metal terrain renderer (src/main/native/metal.m), as one macOS library for both arm64 and x86_64. On other build
+// hosts the jar ships without it and the game draws terrain with OpenGL.
+def nativeOut = layout.buildDirectory.dir('native')
+def jniHome = System.getProperty('java.home')
+def nativeMetal = tasks.register('nativeMetal', Exec) {
+	onlyIf { System.getProperty('os.name').startsWith('Mac') }
+	def src = file('src/main/native/metal.m')
+	def lib = nativeOut.get().file('mcopt/native/libmcoptmetal.dylib').asFile
+	inputs.file src
+	outputs.file lib
+	doFirst { lib.parentFile.mkdirs() }
+	commandLine 'clang', '-O2', '-fobjc-arc', '-Wall', '-Werror', '-arch', 'arm64', '-arch', 'x86_64',
+		'-mmacosx-version-min=13.0', '-dynamiclib', "-I${jniHome}/include", "-I${jniHome}/include/darwin",
+		'-framework', 'Foundation', '-framework', 'Metal', '-framework', 'IOSurface', '-framework', 'OpenGL', '-o', lib, src
+}
+
+// The native world-gen noise (src/main/native/noise.c), as one macOS library for both arm64 and x86_64. It must be
+// bit-exact with the game's Java code: no fused multiply-add (-ffp-contract=off) and no fast-math. On other build hosts
+// the jar ships without it and the mod uses the game's own noise code.
+def nativeNoise = tasks.register('nativeNoise', Exec) {
+	onlyIf { System.getProperty('os.name').startsWith('Mac') }
+	def src = file('src/main/native/noise.c')
+	def lib = nativeOut.get().file('mcopt/native/libmcoptnoise.dylib').asFile
+	inputs.file src
+	outputs.file lib
+	doFirst { lib.parentFile.mkdirs() }
+	commandLine 'clang', '-O2', '-ffp-contract=off', '-fno-fast-math', '-Wall', '-Werror', '-arch', 'arm64', '-arch', 'x86_64',
+		'-mmacosx-version-min=10.9', '-dynamiclib', "-I${jniHome}/include", "-I${jniHome}/include/darwin", '-o', lib, src
+}
+
+processResources {
+	inputs.property 'version', version
+	filesMatching('fabric.mod.json') { expand 'version': version }
+	from(nativeOut)
+	dependsOn nativeNoise, nativeMetal
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_1_8
+	targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = 'UTF-8'
+	it.options.release = 8
+}
+
+// Apache-2.0 asks for LICENSE and NOTICE in every copy.
+jar {
+	from('LICENSE')
+	from('NOTICE')
+}
+
+// Dev only: `./gradlew runVanilla` starts Mojang's own 1.8.9 client jar, without Fabric and so without mcopt, in its own
+// run directory, for side-by-side comparisons. It uses the same libraries (LWJGL with arm64 natives) as runClient.
+tasks.register('runVanilla', JavaExec) {
+	def runDir = file('run-vanilla')
+	doFirst { runDir.mkdirs() }
+	workingDir = runDir
+	mainClass = 'net.minecraft.client.main.Main'
+	classpath = files("${gradle.gradleUserHomeDir}/caches/fabric-loom/${minecraft_version}/minecraft-client.jar") +
+		configurations.minecraftRuntimeLibraries + configurations.minecraftClientRuntimeLibraries
+	def natives = file('.gradle/loom-cache/natives/1.8.9').absolutePath
+	jvmArgs "-Djava.library.path=${natives}", "-Dorg.lwjgl.librarypath=${natives}", '-Xmx2G'
+	args '--version', '1.8.9', '--accessToken', '0', '--username', 'Vanilla', '--gameDir', runDir.absolutePath,
+		'--assetsDir', "${gradle.gradleUserHomeDir}/caches/fabric-loom/assets", '--assetIndex', '1.8.9-1.8'
+}
+
+// Dev only: both runClient and runVanilla start with the same world, "mcopt test", copied fresh from dev/testworld before
+// every launch, so the two clients are compared on identical ground. The template holds only level.dat (seed 8675309,
+// no chunks), so each launch generates the same terrain from scratch. level.dat also holds the player, standing at
+// x -165.5, y 70, z 13.5 on the surface, so every launch starts there instead of a random spot near spawn (which can be
+// a cave). Whatever is done in that world is reset on the
+// next launch; other worlds are left alone.
+def testWorld = { String dir ->
+	tasks.register("testWorld${dir.capitalize().replace('-', '')}", Sync) {
+		from 'dev/testworld'
+		into "${dir}/saves/mcopt-test"
+	}
+}
+def testWorldMod = testWorld('run')
+def testWorldVanilla = testWorld('run-vanilla')
+tasks.named('runClient') { dependsOn testWorldMod }
+tasks.named('runVanilla') { dependsOn testWorldVanilla }

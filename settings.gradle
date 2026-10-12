@@ -1,10 +1,10 @@
 pluginManagement {
 	repositories {
 		maven { url = 'https://maven.fabricmc.net/' }
+		maven { url = 'https://maven.legacyfabric.net/' }
 		mavenCentral()
 		gradlePluginPortal()
 	}
 }
 
 rootProject.name = 'mcopt'
-include 'metal', 'fpshud'

@@ -1,8 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin.qos",
-	"plugin": "mcopt.metal.mixin.qos.QosMixinPlugin",
-	"compatibilityLevel": "JAVA_25",
-	"client": ["RenderQosMixin", "ServerQosMixin", "WorkerQosMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

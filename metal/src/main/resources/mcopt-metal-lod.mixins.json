@@ -1,9 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin.lod",
-	"plugin": "mcopt.metal.mixin.lod.LodMixinPlugin",
-	"compatibilityLevel": "JAVA_25",
-	"mixins": ["LodMaterialContextAccess", "LodTruthChunkMapMixin"],
-	"client": ["LodCameraMixin", "LodClientLevelMixin", "LodFogMixin", "LodLevelRendererMixin", "LodTruthOptionsMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

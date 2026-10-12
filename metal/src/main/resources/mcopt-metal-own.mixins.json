@@ -1,8 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin.own",
-	"plugin": "mcopt.metal.mixin.own.OwnMixinPlugin",
-	"compatibilityLevel": "JAVA_25",
-	"client": ["OwnLevelRendererMixin", "OwnRenderSectionMixin", "OwnSectionCompilerMixin", "OwnSectionDispatcherMixin", "OwnIntCompilerMixin", "OwnIntLevelRendererMixin", "OwnIntAoMixin", "OwnSolidExtractorMixin", "OwnSolidLevelMixin", "OwnIntListsMixin", "OwnIntUberAccess", "OwnIntUberBuffersAccess", "OwnIntDispatcherAccess", "OwnIntVisibleMixin", "OwnIntVisibleClearMixin", "OwnIntMeshSetMixin", "OwnIntBlockEntitiesMixin", "OwnIntCompileRegionMixin", "FrameLogMinecraftMixin", "FrameLogGameRendererMixin", "FrameLogLevelRendererMixin", "FrameLogTexturesMixin", "FrameLogNoAnimMixin", "OwnAnimAtlasAccess", "OwnAnimSpriteAccess", "OwnAnimCopyMixin", "OwnAtlasWriteMixin", "OwnAnimFlushMixin", "OwnAnimFlushFrameMixin", "OwnAnimIdentityMixin", "OwnIntLifeTaskMixin", "OwnIntSectionTaskAccess", "OwnIntLifeSectionMixin", "OwnIntLifeScanMixin", "OwnIntViewAreaAccess", "OwnIntDispatcherLockAccess", "OwnVignetteMixin", "OwnVignetteShaderMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

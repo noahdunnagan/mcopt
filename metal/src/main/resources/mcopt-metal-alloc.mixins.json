@@ -1,8 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin.alloc",
-	"plugin": "mcopt.metal.mixin.alloc.AllocMixinPlugin",
-	"compatibilityLevel": "JAVA_25",
-	"mixins": ["LightMapMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

@@ -9,3 +9,6 @@ mcopt-pack-cache/
 dist/
 .replay-stamp
 .replay-lineage
+run-vanilla/
+.DS_Store
+*.log

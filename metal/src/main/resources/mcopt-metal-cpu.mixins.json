@@ -1,8 +1,0 @@
-{
-	"required": true,
-	"package": "mcopt.metal.mixin.cpu",
-	"plugin": "mcopt.metal.mixin.cpu.CpuMixinPlugin",
-	"compatibilityLevel": "JAVA_25",
-	"client": ["LoadingFpsMixin", "EntityBoxVanillaMixin", "EntityRendererBoxInvoker", "EntityBoxAbMixin", "ModelLoopMixin", "ModelAbMixin", "AbFrameMixin", "LeashMixin", "LeashAbMixin"],
-	"injectors": { "defaultRequire": 1 }
-}

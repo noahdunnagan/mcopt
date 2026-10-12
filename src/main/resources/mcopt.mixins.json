@@ -1,0 +1,41 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "mcopt.legacy.mixin",
+  "plugin": "mcopt.legacy.MixinPlugin",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [
+    "GenBenchMixin",
+    "ImprovedNoiseAccess",
+    "NoiseMixin"
+  ],
+  "client": [
+    "BuiltChunkMoveMixin",
+    "BuiltChunkStorageAccess",
+    "ChunkBuilderMixin",
+    "ChunkDrawMixin",
+    "ChunkInfoAccess",
+    "ChunkRenderManagerAccess",
+    "ChunkUpdatesMixin",
+    "CloudCacheMixin",
+    "CullingCameraViewAccess",
+    "EntityChunkCacheMixin",
+    "FpsBenchMixin",
+    "GameRendererAccess",
+    "HudMixin",
+    "MetalAtlasMixin",
+    "MetalLayerMixin",
+    "MetalChunkStateMixin",
+    "MetalMeshMixin",
+    "MetalSubmitMixin",
+    "MetalTextureMixin",
+    "MetalUploadMixin",
+    "ProfilerMixin",
+    "TerrainSetupMixin",
+    "VertexBufferAccess",
+    "WorldRendererAccess"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

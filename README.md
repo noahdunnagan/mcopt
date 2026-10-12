@@ -1,71 +1,93 @@
-# mcopt
+# mcopt for Minecraft 1.8.9
 
-> [!NOTE]
-> mcopt no longer requires Sodium 🎉
+This branch is the 1.8.9 port of mcopt. Install the jar and play. Every change is in the mod and on by default, so you
+don't add JVM flags or change anything in the launcher.
 
-A Minecraft performance mod for Apple Silicon Macs. Since 0.3.0-alpha.1 it draws the world with its own Metal renderer.
-**Very much alpha:** expect bugs, and back up your worlds.
+**Early alpha:** expect bugs, and back up your worlds.
 
 ## Requirements
 
-- An Apple Silicon Mac on macOS 26 or later
-- Java 25 (the official launcher and Prism download it for 26.3; nothing to install)
-- Minecraft 26.3 with Fabric Loader 0.19.5 or newer
+- Minecraft 1.8.9 with the Legacy Fabric loader (Fabric Loader 0.16 or newer)
+- Java 8 or newer (what the launcher ships for 1.8.9 works)
+- A Mac, ideally Apple Silicon. The Metal renderer and the native world generation are macOS only.
 
 ## Install
 
-1. Install Fabric for Minecraft 26.3: https://fabricmc.net/use/installer/ (or in Prism Launcher: new instance, 26.3,
-   loader Fabric).
-2. Download the mcopt jar from [Releases](../../releases).
-3. Put it in `~/Library/Application Support/minecraft/mods`. Create the `mods` folder if it's missing
-   (Finder: Go > Go to Folder). In Prism: Edit the instance > Mods > Add file.
-4. Start Minecraft with the Fabric profile.
-
-Sodium isn't needed anymore: mcopt won't start alongside it, so take Sodium out of that folder if it's there. Fabric API
-isn't required; keep it if your other mods need it.
-
-To check it's working: press F3 (fn + F3 on a Mac keyboard); the bottom right says `Metal 3 (mcopt)`.
-
-Shows an fps counter in the top-left corner (hidden with F1 or F3; fn + F1 or fn + F3 on a Mac keyboard).
-
-## Settings
-
-- The perf profile is on by default.
-- `profile=none` in `~/Library/Application Support/minecraft/config/mcopt.properties` (in Prism, the instance's
-  `minecraft/config` folder) turns it off. The first launch writes that file.
-- Far terrain is an experimental opt-in: `mcopt.lod=true` in the same file, for Macs with 10 or more GPU cores.
+1. Install Legacy Fabric for 1.8.9: https://legacyfabric.net/ (or in Prism Launcher: new instance, 1.8.9, loader Legacy
+   Fabric).
+2. Put it in the `mods` folder (`~/Library/Application Support/minecraft/mods` on a Mac; in Prism: Edit the instance >
+   Mods > Add file).
+3. Start Minecraft with the Fabric profile.
 
 ## Numbers
 
-fps spinning / flying, same test world, 1920x1080, render distance 16, VSync off, at least two runs each:
+fps while the camera spins in place, same test world every run. Render distance 16, VSync off, Max Framerate
+unlimited, Fancy graphics, VBOs on. Two runs each:
 
-| Mac | vanilla | Sodium 0.9.3 | 0.2.0-alpha.3 | 0.3.0-alpha.1 |
+| Mac | Window | vanilla | mcopt, Metal off | mcopt, Metal on |
 |---|---|---|---|---|
-| Mac mini M4 (10-core GPU, 16 GB) | 156 / 146 | 275-281 / 253-267 | 1202-1223 / 1068-1074 | 1209-1211 / 1068-1069 |
-| MacBook Neo (A18 Pro, 5-core GPU, 8 GB) | 79-81 / 69-72 | 133-146 / 85-91 | 514-579 / 422-449 | 591-638 / 477-504 |
-| Mac mini M6 (12-core GPU, 16 GB) | 297-328 / 283-291 | 454-460 / 406-413 | 1988-1991 / 1738-1742 | 2020-2022 / 1690-1704 |
+| MacBook Air M5 (10-core GPU, 24 GB) | fullscreen (1470x956) | 214-242 / 1% low 133-143 | 250-312 / 1% low 123-173 | 346-500 / 1% low 209-274 |
+| MacBook Air M5 (10-core GPU, 24 GB) | windowed (854x480) | 213-250 / 1% low 127-148 | 277-280 / 1% low 155-160 | 519-526 / 1% low 268-273 |
 
-The mini and Neo cells ran on 6c133ecc, whose only difference from 9865a0a3 is vGroup, which is gated off on those GPUs. The Neo's vanilla and Sodium cells come from the da566d00 run. This build differs from 9865a0a3 only in code that runs when Distant Horizons is installed.
+- "vanilla" is the unmodified game, measured by the same bench with every other part of the mod left out
+  (`-Dmcopt.vanilla=true`). These runs were taken in a separate session from the other two columns.
+- "Metal off" is this mod with `metal=false`: the OpenGL path, with every other change below still on.
+- The Air has no fan, so its GPU clock moves between runs. The second fullscreen pair (250 and 346) ran slower for
+  both setups.
 
-For the most fps: Options > Video Settings, VSync off and Max Framerate Unlimited. The numbers above are with VSync off.
+Comparing the middle of each range, Metal on runs about 1.8 times vanilla fullscreen and 2.3 times windowed. Metal off
+runs about 20% above vanilla in both.
 
-## Known issues
+## Changes in this fork
 
-- Mods that require Sodium (for example Better Block Entities or Iris) can't be used with this build.
-- Mods that call OpenGL directly can't draw on the Metal backend. To switch mcopt's renderer off, add
-  `mcopt.metal=false` to `config/mcopt.properties` (or launch with `-Dmcopt.metal=false`).
-- Distant Horizons runs on the Metal renderer next to mcopt's own terrain. With DH set to its OpenGL renderer, mcopt
-  switches its renderer off for it.
-- Far terrain is experimental. On Macs with fewer than 10 GPU cores, it costs most of the fps.
+dysnasia made these changes, and all of them are on by default. To turn one off, set its key to `false` in
+`config/mcopt.properties`. The first launch writes that file with every key and a comment for each.
 
-## Plans
+### Metal terrain
 
-- Far terrain on by default, with tiers for smaller Macs
-- Our own shaders (BSL-level) as an option
-- Faster world generation (native noise, bit-exact)
-- More exact server-tick and chunk optimizations, held for later alphas
-- Faster startup
-- Wider hardware testing
+The solid and cutout terrain layers (everything but water, ice, stained glass and slime) are drawn with Metal instead of
+OpenGL. On a Mac, OpenGL runs on top of Metal, so this removes the translation layer for most of the frame's geometry.
+Finished chunk meshes go into large Metal buffers. The GPU culls hidden chunk pieces itself against a depth pyramid built
+from the previous frame's visible set, then draws the rest with indirect draws. The mod copies the result, depth
+included, into the game's frame, so entities, water, particles and the hand draw over it as before. Off switch: `metal=false`.
+
+### Faster rendering on the OpenGL side
+
+- Chunk sections draw as indexed triangles instead of quads, which the macOS driver otherwise converts on the CPU
+  every frame.
+- The visibility walk over the chunk grid (setupTerrain) runs over flat arrays instead of allocating per section.
+- The entity pass looks up each chunk column once per frame instead of once per section.
+- There are more chunk-mesh worker threads, matched to the core count, and they get new work every frame.
+- Fancy clouds are built once and reused until they scroll a whole cell or change color, instead of being rebuilt from
+  4,000 quads in 128 draws every frame. They look the same.
+
+### Faster world generation
+
+The improved Perlin noise behind every overworld, nether and end density octave runs in native code instead of Java. The
+library is built for both Apple Silicon and Intel Macs and ships inside the jar.
+
+The blocks come out the same. At startup the mod checks the native code against the game's own on random inputs and
+falls back to Java if anything differs. In testing, all 9.4 million checked noise values matched, and the terrain hash
+of 600 spawn chunks was the same with native noise, Java noise, and the two mixed chunk by chunk.
+
+Each overworld terrain chunk takes 5 to 11% less time (1.24 to 1.31 ms against 1.38 to 1.40 ms). I measured that over
+600 spawn chunks per run on a dedicated server, giving each chunk one of the two noises at random in the same process.
+1.8.9 generates chunks on the server thread, so the saving comes straight off world loading time. Off switch: `nativeNoise=false`.
+
+### FPS counter
+
+Shows `NN fps` in the top-left corner while you play. It hides with the HUD (F1) and while F3 is open, since F3 shows
+its own counter. On a Mac keyboard, use fn + F1 and fn + F3. Off switch: `fpsHud=false`.
+
+## For developers
+
+- `-Dmcopt.fps.bench=true` runs the fps bench behind the numbers above; with `-Dmcopt.vanilla=true` it measures the
+  unmodified game.
+- `./gradlew build` builds the jar. On a Mac it also builds the native library with clang (`-ffp-contract=off`, no
+  fast-math, because the output has to match Java bit for bit).
+- `-Dmcopt.noise.verify=true` runs both the native and the Java noise on every call and logs the mismatch count.
+- `-Dmcopt.gen.bench=true` times each overworld chunk with native or Java noise picked at random, and logs both means
+  and a terrain hash that must stay the same from run to run.
 
 ## Licence and credits
 
