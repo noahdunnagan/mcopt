@@ -21,6 +21,8 @@ typedef struct {
 	int lo[MAX_IV], hi[MAX_IV];
 	unsigned char kind[MAX_IV];
 	unsigned char clear;
+	// the top is water's (GEOM_WET): hi[0] is the water's surface
+	unsigned char wet;
 	// a real chunk's column: its first interval's solid run reaches down to bot only (under it, maybe a cave or the air under
 	// an overhang); NEG_INF: solid all the way down
 	int bot;
@@ -55,6 +57,7 @@ static void column0(const LmIn *in, int ax, int az, Col *c) {
 	uint32_t g = in->geom[idx];
 	c->n = 0;
 	c->clear = (g & GEOM_CLEAR) != 0;
+	c->wet = (g & GEOM_WET) != 0;
 	if (!(g & GEOM_VALID)) {
 		c->n = -1;
 		return;
@@ -231,6 +234,12 @@ typedef struct {
 static int skirtFloor(const Col *cols, int cx, int cz, int dx, int dz) {
 	const Col *a = &cols[(cz + 1) * REGION + (cx + 1)];
 	int lo = a->hi[0], hi = a->hi[0];
+	// Water meeting water at the same surface across the seam: no gap to hide, so no skirt. Under the surface it showed through
+	// the real terrain's water as pale columns hanging from the seam (noahdunnagan/mcopt#14).
+	if (a->wet && cx + dx >= -1 && cz + dz >= -1 && cx + dx <= LM_TILE && cz + dz <= LM_TILE) {
+		const Col *b = &cols[(cz + dz + 1) * REGION + (cx + dx + 1)];
+		if (b->n > 0 && b->wet && b->hi[0] == a->hi[0]) return a->hi[0];
+	}
 	int ax = dz != 0 ? 1 : 0, az = dx != 0 ? 1 : 0;
 	for (int k = -1; k <= 1; k++) {
 		int nx = cx + dx + k * ax, nz = cz + dz + k * az;
