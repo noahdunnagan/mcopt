@@ -238,7 +238,7 @@ public final class MetalBridge {
 	/** Binds a backend pipeline's own state (as an undelegated pass would) from a delegate that keeps the pass's attachments. */
 	public static void bindOwnPipeline(long enc, Object backendPipeline, boolean hasDepth) {
 		MetalPipeline p = (MetalPipeline) backendPipeline;
-		Native.pipeline(enc, hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		Native.pipeline(enc, hasDepth ? p.withDepth : p.withoutDepth(), hasDepth ? p.depthState : p.depthStateWithoutDepth(), p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
 	}
 
 	public static @Nullable String pipelineName(Object backendPipeline) {

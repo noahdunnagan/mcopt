@@ -43,8 +43,16 @@ final class MetalPipeline implements BackendRenderPipeline {
 
 	/** Metal bakes the depth attachment format into the pipeline, so like Vulkan there's one for passes with depth and one without. */
 	final long withDepth;
-	final long withoutDepth;
+	/**
+	 * 0 for a pipeline with a depth state until a pass without a depth attachment draws with it (see {@link #withoutDepth()}).
+	 * Use the method: binding this field directly would hand Metal a nil pipeline state and crash in the driver.
+	 */
+	private long withoutDepth;
 	final long depthState;
+	/** The depth state bound with {@link #withoutDepth()}: depthState when that already always passes and writes nothing. */
+	private long depthStateWithoutDepth;
+	/** For a pipeline with a depth state: its Metal source, to build {@link #withoutDepth()} from when a pass first needs it; null after. */
+	private @Nullable Translated vertexSource, fragmentSource;
 	final List<BindGroupLayout.UniformDescription> uniforms;
 	final boolean cull;
 	final boolean wireframe;
@@ -57,6 +65,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 	/** Sodium solid/cutout terrain only, with MetalTerrain on: the same pipeline fetching its own vertices; 0 otherwise. */
 	final long pulled;
 	private final MetalEncoder encoder;
+	private final CreateInfo info;
 	private boolean closed;
 
 	private MetalPipeline(MetalEncoder encoder, long withDepth, long withoutDepth, long pulled, long depthState, int depthCompare, CreateInfo info) {
@@ -65,7 +74,9 @@ final class MetalPipeline implements BackendRenderPipeline {
 		this.withoutDepth = withoutDepth;
 		this.pulled = pulled;
 		this.depthState = depthState;
+		this.depthStateWithoutDepth = withoutDepth != 0 ? depthState : 0;
 		this.depthCompare = depthCompare;
+		this.info = info;
 		this.name = info.name();
 		this.uniforms = info.uniforms();
 		this.cull = info.cull();
@@ -122,6 +133,10 @@ final class MetalPipeline implements BackendRenderPipeline {
 			int compare = depth == null ? 7 : MetalConst.compare(depth.depthTest());
 			long depthState = Native.depthStateNew(ctx, compare, depth != null && depth.writeDepth() ? 1 : 0);
 			MetalPipeline pipeline = new MetalPipeline(encoder, withDepth, withoutDepth, pulled, depthState, compare, info);
+			if (withoutDepth == 0) {
+				pipeline.vertexSource = v;
+				pipeline.fragmentSource = f;
+			}
 			return pipeline;
 		} finally {
 			if (vlib != 0) Native.release(vlib);
@@ -343,6 +358,41 @@ final class MetalPipeline implements BackendRenderPipeline {
 		}
 	}
 
+	/**
+	 * The pipeline state for a pass without a depth attachment. A pipeline with a depth test can still be drawn into a
+	 * colour-only target, where OpenGL and Vulkan just skip the test (Lunar Client's HUD does it once world hosting starts),
+	 * so the variant is built the first time that happens: pipelines that only ever draw with depth cost nothing extra.
+	 */
+	long withoutDepth() {
+		if (this.withoutDepth == 0) {
+			Translated v = Objects.requireNonNull(this.vertexSource, this.name), f = Objects.requireNonNull(this.fragmentSource, this.name);
+			long ctx = this.encoder.ctx, vlib = 0, flib = 0;
+			try (MemoryStack stack = MemoryStack.stackPush()) {
+				long err = stack.nmalloc(1, 4096);
+				vlib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(v.msl)), err, 4096);
+				if (vlib == 0) throw new IllegalStateException(this.name + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
+				flib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(f.msl)), err, 4096);
+				if (flib == 0) throw new IllegalStateException(this.name + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
+				long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
+				if (GPU_COUNT) Native.gpuCountLabel(this.name + " (no depth)");
+				long pso = pipelineNewCounted(ctx, vlib, vname, flib, fname, describe(stack, this.info, false, true), err, 4096);
+				if (pso == 0) throw new IllegalStateException(this.name + " (no depth): " + MemoryUtil.memUTF8(err));
+				this.withoutDepth = pso;
+				this.depthStateWithoutDepth = Native.depthStateNew(ctx, 7, 0);  // MTLCompareFunctionAlways, no write: there's no depth to test
+				this.vertexSource = this.fragmentSource = null;
+			} finally {
+				if (vlib != 0) Native.release(vlib);
+				if (flib != 0) Native.release(flib);
+			}
+		}
+		return this.withoutDepth;
+	}
+
+	/** The depth state to bind with {@link #withoutDepth()}, which must have been called first. */
+	long depthStateWithoutDepth() {
+		return this.depthStateWithoutDepth;
+	}
+
 	@Override
 	public boolean isClosed() {
 		return this.closed;
@@ -354,6 +404,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 			this.closed = true;
 			this.encoder.releaseLater(this.withDepth);
 			if (this.withoutDepth != 0) this.encoder.releaseLater(this.withoutDepth);
+			if (this.depthStateWithoutDepth != 0 && this.depthStateWithoutDepth != this.depthState) this.encoder.releaseLater(this.depthStateWithoutDepth);
 			if (this.pulled != 0) this.encoder.releaseLater(this.pulled);
 			this.encoder.releaseLater(this.depthState);
 		}

@@ -97,7 +97,7 @@ final class MetalRenderPass implements RenderPassBackend {
 		if (this.encoder.tracing()) this.encoder.trace("  pipeline", p.name, "after draws:", this.draws, "triangles:", this.indices / 3);
 		this.pipeline = p;
 		this.recording = record ? p : null;
-		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth(), this.hasDepth ? p.depthState : p.depthStateWithoutDepth(), p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
 		Arrays.fill(this.pending, 0, p.uniforms.size(), null);
 		this.dirtyUpTo = p.uniforms.size();
 	}
@@ -114,7 +114,7 @@ final class MetalRenderPass implements RenderPassBackend {
 			this.slots = this.delegate.setPipeline(this.enc, p, p.uniforms);
 			return;
 		}
-		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth(), this.hasDepth ? p.depthState : p.depthStateWithoutDepth(), p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
 	}
 
 	/** Called by the encoder when the frontend ends the pass. */
