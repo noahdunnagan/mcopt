@@ -11,4 +11,8 @@ public final class FrameWait {
 	public static void sleep(long nanos) {
 		Native.sleepPrecise(nanos);
 	}
+
+	public static void sleepUntil(long deadline) {
+		for (long remaining; (remaining = deadline - System.nanoTime()) > 0; ) Native.sleepPrecise(remaining);
+	}
 }
