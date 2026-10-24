@@ -33,6 +33,9 @@ struct Rec {
 	uint pad0, pad1;
 };
 
+constant uint CULL_SECTION_MASK = 1u;
+constant uint CULL_SKIP_SOLID = 2u;
+
 struct CullFrame {
 	float4 planes[4];     // left, right, bottom, top of the view frustum, camera-relative world space (xyz . p + w >= 0 inside)
 	int4 camBlock;        // camera block position
@@ -41,11 +44,16 @@ struct CullFrame {
 	int viewDistance;     // chunks
 	uint sectionCount;
 	uint listCap;         // per layer
-	int useMask;          // 1: only sections set in mask (vanilla's visible sections this frame)
+	uint visibilityFlags;
 	int run;              // quads per instance (draw unit size)
 	int occ;              // 1: two-phase occlusion (lists A = visible last frame, T = every unit tested in phase B)
 	int fat;              // 1: the lists hold whole instances (Inst) for the vertex stage, not record indices
 	int fatT;             // 1 (with occ 2, -Dmcopt.own.quads.fatT): each tested unit's TUnit also written (buffer 10, same position)
+};
+
+struct ObjectCullFrame {
+	CullFrame cull;
+	uint recordCount;
 };
 
 // a tested unit as the per-quad path's phase A and B read it, written by the cull next to its tested-list entry: the record's
@@ -192,7 +200,7 @@ kernel void own_cull(constant CullFrame &f [[buffer(0)]], device const Section *
 	device const uint *prevVis [[buffer(8)]], device uint *tested [[buffer(9)]], device Inst *fat [[buffer(10)]], constant SolidOcc &so [[buffer(12)]],
 	texture2d<float, access::read> soTex [[texture(1)]], uint i [[thread_position_in_grid]]) {
 	if (i >= f.sectionCount) return;
-	if (f.useMask != 0 && (mask[i >> 5] & (1u << (i & 31))) == 0) return;
+	if ((f.visibilityFlags & CULL_SECTION_MASK) != 0 && (mask[i >> 5] & (1u << (i & 31))) == 0) return;
 	Section s = sections[i];
 	if (s.recCount == 0) return;
 	// vanilla's distance rule (SectionOcclusionGraph.isInViewDistance, ChunkTrackingView.isWithinDistance; vertical: getRelativeFrom)
@@ -209,6 +217,7 @@ kernel void own_cull(constant CullFrame &f [[buffer(0)]], device const Section *
 	float3 cam = -o;
 	for (uint r = s.recStart; r < s.recStart + s.recCount; r++) {
 		Rec rec = recs[r];
+		if ((f.visibilityFlags & CULL_SKIP_SOLID) != 0 && ((rec.meta >> 9) & 3) == 0) continue;
 		uint bucket = (rec.meta >> 6) & 7;
 		float plane = float(rec.plane) / 256.0;
 		bool vis;
@@ -285,7 +294,7 @@ kernel void own_cull_r(constant CullFrame &f [[buffer(0)]], device const Section
 	if (r < recCap) {
 		rec = recs[r];
 		uint slot = rec.slot;
-		if (slot < f.sectionCount && (f.useMask == 0 || (mask[slot >> 5] & (1u << (slot & 31))) != 0)) {
+		if (slot < f.sectionCount && ((f.visibilityFlags & CULL_SECTION_MASK) == 0 || (mask[slot >> 5] & (1u << (slot & 31))) != 0)) {
 			s = sections[slot];
 			if (s.recCount != 0 && r >= s.recStart && r < s.recStart + s.recCount) {
 				int3 sec = int3(s.x, s.y, s.z) >> 4;
@@ -298,7 +307,7 @@ kernel void own_cull_r(constant CullFrame &f [[buffer(0)]], device const Section
 					if (dot(pl.xyz, v) + pl.w < -0.5) in = false;
 				}
 				layer = (rec.meta >> 9) & 3;
-				if (in && layer <= 1) {
+				if (in && layer <= 1 && ((f.visibilityFlags & CULL_SKIP_SOLID) == 0 || layer != 0)) {
 					float3 cam = -o;
 					uint bucket = (rec.meta >> 6) & 7;
 					float plane = float(rec.plane) / 256.0;
@@ -533,7 +542,7 @@ kernel void frag_cull(constant CullFrame &f [[buffer(0)]], device const Section 
 	device atomic_uint *bArgs [[buffer(15)]], device const uint *tieRing [[buffer(30)]],
 	texture2d<float, access::read> soTex [[texture(1)]], uint i [[thread_position_in_grid]]) {
 	if (i >= f.sectionCount) return;
-	if (f.useMask != 0 && (mask[i >> 5] & (1u << (i & 31))) == 0) return;
+	if ((f.visibilityFlags & CULL_SECTION_MASK) != 0 && (mask[i >> 5] & (1u << (i & 31))) == 0) return;
 	Section s = sections[i];
 	if (s.recCount == 0) return;
 	int3 sec = int3(s.x, s.y, s.z) >> 4;
@@ -681,7 +690,7 @@ template <ushort W> static void fragCullS(constant CullFrame &f, device const Se
 	texture2d<float, access::read> soTex, uint gid, uint lane) {
 	uint i = gid / W, sl = lane % W;  // the section (uniform across its W lanes; 32 / W sections a SIMD group, the grid is sectionCount * W)
 	if (i >= f.sectionCount) return;
-	if (f.useMask != 0 && (mask[i >> 5] & (1u << (i & 31))) == 0) return;
+	if ((f.visibilityFlags & CULL_SECTION_MASK) != 0 && (mask[i >> 5] & (1u << (i & 31))) == 0) return;
 	Section s = sections[i];
 	if (s.recCount == 0) return;
 	int3 sec = int3(s.x, s.y, s.z) >> 4;
@@ -1904,6 +1913,101 @@ static VOut ownShade(Vtx v, int3 origin, int uploadMs, constant DrawFrame &df, c
 // bucketed quad, not behind its own plane (the cull's facing test, per quad). The kept quads are packed, so neither the unit's
 // padding nor the dropped quads cost vertex, primitive or tile work. Quads keep their order (vanilla's depth ties).
 using OwnMeshT = metal::mesh<VOut, void, 128, 64, metal::topology::triangle>;
+
+struct ObjectMeshlet {
+	uint quadStart, quadCount;
+	int x, y, z, uploadMs;
+};
+
+struct ObjectPayload {
+	ObjectMeshlet meshlets[128];
+};
+
+static bool objectRecordVisible(uint record, Rec rec, Section s, constant CullFrame &f) {
+	if (record < s.recStart || record - s.recStart >= s.recCount) return false;
+	if (((rec.meta >> 9) & 3) != 0) return false;
+	int3 section = int3(s.x, s.y, s.z) >> 4;
+	int dx = max(0, abs(section.x - f.camSection.x) - 1);
+	int dz = max(0, abs(section.z - f.camSection.z) - 1);
+	if (dx * dx + dz * dz >= f.viewDistance * f.viewDistance || abs(section.y - f.camSection.y) > f.viewDistance) return false;
+	float3 origin = float3(int3(s.x, s.y, s.z) - f.camBlock.xyz) + f.camOffset.xyz;
+	float3 lo = origin + float3(int3(rec.lo & 255, (rec.lo >> 8) & 255, (rec.lo >> 16) & 255) - 16);
+	float3 hi = origin + float3(int3(rec.hi & 255, (rec.hi >> 8) & 255, (rec.hi >> 16) & 255) - 16);
+	for (uint p = 0; p < 4; p++) {
+		float4 plane = f.planes[p];
+		if (dot(plane.xyz, select(lo, hi, plane.xyz > 0)) + plane.w < -0.5) return false;
+	}
+	uint bucket = (rec.meta >> 6) & 7;
+	if (bucket < 6) {
+		float camera = -origin[bucket >> 1];
+		float plane = float(rec.plane) / 256.0;
+		if ((bucket & 1) == 0 ? camera <= plane - FACE_MARGIN : camera >= plane + FACE_MARGIN) return false;
+	}
+	return true;
+}
+
+[[object, max_total_threads_per_threadgroup(32), max_total_threadgroups_per_mesh_grid(128)]]
+void own_object(object_data ObjectPayload &payload [[payload]], mesh_grid_properties grid,
+	uint group [[threadgroup_position_in_grid]], uint lane [[thread_index_in_threadgroup]],
+	constant ObjectCullFrame &frame [[buffer(0)]], device const Section *sections [[buffer(1)]],
+	device const Rec *recs [[buffer(2)]], device const uint *mask [[buffer(3)]]) {
+	threadgroup uint offsets[33];
+	uint record = group * 32 + lane;
+	Rec rec = {};
+	Section section = {};
+	uint count = 0;
+	if (record < frame.recordCount) {
+		rec = recs[record];
+		if (rec.slot < frame.cull.sectionCount) {
+			section = sections[rec.slot];
+			bool masked = (frame.cull.visibilityFlags & CULL_SECTION_MASK) != 0 && (mask[rec.slot >> 5] & (1u << (rec.slot & 31))) == 0;
+			if (!masked && objectRecordVisible(record, rec, section, frame.cull)) count = ((rec.meta & 63) + 16) / 16;
+		}
+	}
+	offsets[lane] = count;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (lane == 0) {
+		uint total = 0;
+		for (uint i = 0; i < 32; i++) {
+			uint next = offsets[i];
+			offsets[i] = total;
+			total += next;
+		}
+		offsets[32] = total;
+	}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	for (uint i = 0; i < count; i++) {
+		payload.meshlets[offsets[lane] + i] = ObjectMeshlet {rec.quadStart + i * 16,
+			min(16u, (rec.meta & 63) + 1 - i * 16), section.x, section.y, section.z, section.uploadMs};
+	}
+	if (lane == 0) grid.set_threadgroups_per_grid(uint3(offsets[32], 1, 1));
+}
+
+using ObjectMesh = metal::mesh<VOut, void, 64, 32, metal::topology::triangle>;
+
+[[mesh, max_total_threads_per_threadgroup(64)]]
+void own_object_mesh(ObjectMesh out, object_data const ObjectPayload &payload [[payload]],
+	uint group [[threadgroup_position_in_grid]], uint lane [[thread_index_in_threadgroup]],
+	device const void *arenaRaw [[buffer(16)]], constant DrawFrame &df [[buffer(20)]],
+	constant Projection &proj [[buffer(21)]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]],
+	texture2d<float> lightmap [[texture(17)]], sampler lightSampler [[sampler(15)]]) {
+	ObjectMeshlet meshlet = payload.meshlets[group];
+	if (lane == 0) out.set_primitive_count(meshlet.quadCount * 2);
+	if (lane < meshlet.quadCount * 4) {
+		float3 relative;
+		out.set_vertex(lane, ownVertex(meshlet.quadStart * 4 + lane, int3(meshlet.x, meshlet.y, meshlet.z), meshlet.uploadMs,
+			df, arenaRaw, proj, g, t, lightmap, lightSampler, relative));
+	}
+	if (lane < meshlet.quadCount) {
+		uint base = lane * 4;
+		out.set_index(lane * 6, base);
+		out.set_index(lane * 6 + 1, base + 1);
+		out.set_index(lane * 6 + 2, base + 2);
+		out.set_index(lane * 6 + 3, base + 2);
+		out.set_index(lane * 6 + 4, base + 3);
+		out.set_index(lane * 6 + 5, base);
+	}
+}
 
 // F_OCC: the occlusion's parameters (mco_draw), the pyramid's fields as ownPyramid fills them
 struct FragOcc {

@@ -7,6 +7,8 @@ import com.mojang.renderpearl.backend.api.GpuSurfaceBackend;
 import java.util.Collection;
 import java.util.List;
 import org.lwjgl.sdl.SDLMetal;
+import org.lwjgl.sdl.SDLProperties;
+import org.lwjgl.sdl.SDLVideo;
 
 /**
  * A CAMetalLayer on the SDL window. The drawable is fetched at blit time rather than frame start: holding it for
@@ -25,7 +27,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 	 * the laptop's 120 Hz 5K display at ~1800 fps, paced presents without display sync reach the screen in pairs ~1.9 ms apart
 	 * every 16.7 ms (a 60 Hz cadence); with vsync the grid is a clean 8.33 ms.
 	 */
-	private static final boolean PACE_SYNC = Boolean.getBoolean("mcopt.metal.paceSync");
+	private static final boolean PACE_SYNC = Boolean.parseBoolean(System.getProperty("mcopt.metal.paceSync", System.getProperty("meshnet.smooth", "true")));
 	/**
 	 * -Dmcopt.metal.paceAdapt=true: the pacer's margin learns the compositor's latch from scanout times (mc_pace in mcmetal.m): a
 	 * paced frame shown more than half a refresh after the refresh it was aimed at adds lead, a frame on time takes a little away.
@@ -36,20 +38,25 @@ final class MetalSurface implements GpuSurfaceBackend {
 	private final MetalEncoder encoder;
 	private final long view;
 	private final long layer;
+	private final long nativeWindow;
+	private long nextDisplayCheck;
 
 	MetalSurface(long ctx, MetalEncoder encoder, long window) {
 		this.ctx = ctx;
 		this.encoder = encoder;
 		this.view = SDLMetal.SDL_Metal_CreateView(window);
 		this.layer = SDLMetal.SDL_Metal_GetLayer(this.view);
+		this.nativeWindow = SDLProperties.SDL_GetPointerProperty(SDLVideo.SDL_GetWindowProperties(window), SDLVideo.SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, 0);
 	}
 
 	@Override
 	public void configure(GpuSurface.Configuration config) {
 		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO;
 		this.paced = !vsync && PACE;
+		if (this.paced) Native.paceWindow(this.nativeWindow);
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
 		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8);
+		System.out.println("meshnet: presentation sync=" + (vsync || PACE_SYNC && this.paced) + " paced=" + this.paced);
 	}
 
 	@Override
@@ -63,6 +70,13 @@ final class MetalSurface implements GpuSurfaceBackend {
 
 	@Override
 	public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
+		if (this.paced) {
+			long now = System.nanoTime();
+			if (now >= this.nextDisplayCheck) {
+				Native.paceWindow(this.nativeWindow);
+				this.nextDisplayCheck = now + 1_000_000_000L;
+			}
+		}
 		// mcopt.rec hook: the opt-in recorder (-Dmcopt.rec, mcopt.metal.rec) takes the finished frame, GUI included. Rec.ON is a constant false without it.
 		if (mcopt.metal.rec.Rec.ON) mcopt.metal.rec.Rec.frame(this.encoder, textureView);
 		long t0 = WaitStats.ON ? System.nanoTime() : 0;

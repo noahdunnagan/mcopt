@@ -2,7 +2,7 @@ plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 }
 
-version = '0.3.0-alpha.2'
+version = '0.3.0-alpha.2-meshnet.2'
 
 dependencies {
 	minecraft "com.mojang:minecraft:${minecraft_version}"
@@ -17,11 +17,11 @@ def nativeOut = layout.buildDirectory.dir('natives/natives')
 tasks.register('compileNative', Exec) {
 	def sources = ['mcmetal.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m', 'mcown.m', 'mccap.m'].collect { file("src/main/native/$it") }
 	def output = nativeOut.get().file('libmcmetal.dylib').asFile
-	inputs.files sources, file('src/main/native/mcmetal.h'), file('src/main/native/lodmesh.h')
+	inputs.files sources, file('src/main/native/mcmetal.h'), file('src/main/native/lodmesh.h'), file('src/main/native/framepace.h')
 	outputs.file output
 	doFirst { output.parentFile.mkdirs() }
 	commandLine(['clang', '-fno-objc-arc', '-O2', '-Wall', '-arch', 'arm64', '-mmacosx-version-min=15.0', '-dynamiclib', '-install_name', '@rpath/libmcmetal.dylib',
-		'-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'Metal', '-framework', 'QuartzCore', '-o', output] + sources)
+		'-framework', 'AppKit', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'Metal', '-framework', 'QuartzCore', '-o', output] + sources)
 }
 
 processResources {
@@ -44,4 +44,15 @@ tasks.withType(JavaCompile).configureEach {
 	// the far terrain's Vector API noise control (LodNoiseVector, opt-in -Dmcopt.lod.nativeNoise=vector): loaded only when the game runs with
 	// --add-modules jdk.incubator.vector
 	if (it.name == 'compileJava') it.options.compilerArgs += ['--add-modules', 'jdk.incubator.vector']
+}
+
+tasks.register('testobjects', Exec) {
+	dependsOn 'compileNative'
+	workingDir rootProject.projectDir
+	commandLine 'python3', 'tools/check_objects.py'
+}
+
+tasks.register('testpacing', Exec) {
+	workingDir rootProject.projectDir
+	commandLine 'python3', 'tools/check_pacing.py'
 }

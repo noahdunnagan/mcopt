@@ -214,6 +214,8 @@ public final class OwnTerrain {
 	static final int ARENA_QUAD = COMPACT ? 64 : QUAD_BYTES;
 	private static final int CULL_FRAME_BYTES = 144, BUCKETS = 7;
 	static final int DRAW_FRAME_BYTES = 80;
+	private static final int CULL_SKIP_SOLID = 2;
+	private static final boolean OBJECT_TERRAIN = Boolean.getBoolean("meshnet.objects");
 
 	private static @Nullable OwnTerrain instance;
 	private static boolean failed;
@@ -2116,6 +2118,10 @@ public final class OwnTerrain {
 				MemoryUtil.memPutInt(f + 124, 1);
 			}
 			int nowMs = (int) (Util.getMillis() - this.baseMs);
+			if ((OBJECT_TERRAIN && mode.equals("draw") || mode.equals("objects")) && !OwnCapture.ON && OwnNative.objectReady(this.own, this.enc)) {
+				this.drawObjects(f, clip, nowMs, (int) fadeMs, k, projection, globals, terrain, fog, atlas, sampler);
+				return true;
+			}
 			// solid-section occlusion (OwnSolid): built before the cull, which tests units against it; probe modes solid / nosolid
 			// (frag probe modes ending in "+nosolid" turn it off too, so a probe can compare a frag set with and without it)
 			boolean solid = OwnSolid.ON && !mode.equals("nosolid") && !mode.endsWith("+nosolid") || mode.equals("solidocc");
@@ -2959,6 +2965,40 @@ public final class OwnTerrain {
 				MetalBridge.restorePass(this.encoder);
 				this.qsFrames++;
 			}
+		}
+	}
+
+	private void drawObjects(long frame, Matrix4f clip, int nowMs, int fadeMs, int ring, GpuBufferSlice projection,
+		GpuBuffer globals, GpuBufferSlice terrain, GpuBufferSlice fog, GpuTextureView atlas, GpuSampler sampler) {
+		MemoryUtil.memPutInt(frame + 124, MemoryUtil.memGetInt(frame + 124) | CULL_SKIP_SOLID);
+		MemoryUtil.memPutInt(frame + 132, 0);
+		OwnNative.cull(this.own, this.enc, frame, CULL_FRAME_BYTES, this.tables[ring], this.recBuffer, this.args, this.lists,
+			this.masks[ring], this.maxSlot + 1, this.prevVis, this.curVis, this.tested, 0, this.fat, 0);
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			long uniforms = stack.nmalloc(8, 64);
+			MemoryUtil.memPutLong(uniforms, MetalBridge.useBuffer(this.encoder, projection.buffer()));
+			MemoryUtil.memPutLong(uniforms + 8, projection.offset());
+			MemoryUtil.memPutLong(uniforms + 16, MetalBridge.useBuffer(this.encoder, globals));
+			MemoryUtil.memPutLong(uniforms + 24, 0);
+			MemoryUtil.memPutLong(uniforms + 32, MetalBridge.useBuffer(this.encoder, terrain.buffer()));
+			MemoryUtil.memPutLong(uniforms + 40, terrain.offset());
+			MemoryUtil.memPutLong(uniforms + 48, MetalBridge.useBuffer(this.encoder, fog.buffer()));
+			MemoryUtil.memPutLong(uniforms + 56, fog.offset());
+			long draw = stack.ncalloc(16, 1, DRAW_FRAME_BYTES);
+			MemoryUtil.memPutInt(draw + 4, nowMs);
+			MemoryUtil.memPutInt(draw + 8, fadeMs);
+			if (CPU_CLIP) {
+				MemoryUtil.memPutInt(draw + 12, 1);
+				clip.getToAddress(draw + 16);
+			}
+			GpuTextureView light = Minecraft.getInstance().gameRenderer.lightmap();
+			GpuSampler lightSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+			OwnNative.objectDraw(this.own, this.enc, frame, draw, this.recAlloc.capacity(), this.arenaBuffer, this.tables[ring],
+				this.recBuffer, this.masks[ring], uniforms, MetalBridge.viewHandle(atlas), MetalBridge.samplerHandle(sampler),
+				MetalBridge.viewHandle(light), MetalBridge.samplerHandle(lightSampler));
+			this.drawList(1, draw, this.arenaBuffer, ring, uniforms, atlas, sampler, light, lightSampler);
+		} finally {
+			MetalBridge.reapplyPipeline(this.encoder);
 		}
 	}
 

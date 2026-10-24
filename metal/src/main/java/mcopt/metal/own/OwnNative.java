@@ -14,6 +14,43 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
 /** Downcalls into mcown.m. Pointers cross as longs, as everywhere in the backend. */
 final class OwnNative {
 	private static final Linker LINKER = Linker.nativeLinker();
+	private static final MethodHandle OBJECT_READY = fn("mco_object_ready", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static final MethodHandle OBJECT_DRAW = fn("mco_object_draw", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT,
+		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static boolean objectUnavailable;
+	private static boolean objectAnnounced;
+
+	static boolean objectReady(long own, long enc) {
+		if (objectUnavailable) return false;
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			long error = stack.ncalloc(1, 2048, 1);
+			int status = (int) OBJECT_READY.invokeExact(own, enc, error, 2048);
+			if (status != 1) {
+				objectUnavailable = true;
+				System.err.println("meshnet: object terrain unavailable, using mcopt: " + MemoryUtil.memUTF8(error));
+				return false;
+			}
+			if (!objectAnnounced) {
+				objectAnnounced = true;
+				System.out.println("meshnet: opaque object/mesh terrain enabled, 64 vertices per meshlet");
+			}
+			return true;
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	static void objectDraw(long own, long enc, long cull, long draw, int recordCount, long arena, long sections, long records,
+		long mask, long uniforms, long atlas, long atlasSampler, long light, long lightSampler) {
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			long error = stack.ncalloc(1, 2048, 1);
+			int status = (int) OBJECT_DRAW.invokeExact(own, enc, cull, draw, recordCount, arena, sections, records, mask, uniforms,
+				atlas, atlasSampler, light, lightSampler, error, 2048);
+			if (status < 0) throw new IllegalStateException(MemoryUtil.memUTF8(error));
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
 
 	private static final MethodHandle TL_RESTART = fn("mc_tl_restart", false, JAVA_INT, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle NEW = fn("mco_new", false, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_INT);

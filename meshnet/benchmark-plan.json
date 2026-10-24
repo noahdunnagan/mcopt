@@ -1,0 +1,35 @@
+{
+  "settings": {
+    "minecraft": "26.3",
+    "upstream_commit": "7b1d0fb49b4aa03f0a8ebd31a42f93c5fa1cbc6c",
+    "resolution": [1920, 1080],
+    "render_distance_chunks": 16,
+    "vsync": false,
+    "frame_limit": "unlimited",
+    "warmup_seconds": 30,
+    "measurement_seconds": 60,
+    "trials_per_variant": 3,
+    "camera": "identical recorded trajectory in a copied test world",
+    "power": "plugged in, low power mode disabled, same thermal conditions"
+  },
+  "common_jvm_arguments": [
+    "-Dmcopt.profile=indie",
+    "-Dmcopt.lod=false",
+    "-Dmcopt.own.int.frameLog=true"
+  ],
+  "variant_jvm_arguments": {
+    "mcopt": ["-Dmeshnet.objects=false"],
+    "objects": ["-Dmeshnet.objects=true"]
+  },
+  "scenarios": ["panorama", "loaded-flight", "dense-city", "unexplored-flight", "entity-heavy"],
+  "run_fields": {
+    "scenario": "one of the scenarios above",
+    "variant": "mcopt or objects",
+    "trial": "integer trial number, paired between variants",
+    "frame_log": "path relative to this manifest to the recorded framelog.csv",
+    "start_ms": "epoch milliseconds after world loading and warmup",
+    "end_ms": "epoch milliseconds at the end of the camera trajectory"
+  },
+  "cpu_limit_evidence": {},
+  "runs": []
+}

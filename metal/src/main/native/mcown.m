@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define OWN_MAX_LAYOUTS 64
+#define OWN_OBJECT_KIND ((int) 0x80000000u)
 
 typedef struct {
 	MTLPixelFormat colors[MAX_COLORS];
@@ -506,7 +507,7 @@ static id<MTLFunction> ownStage(Own *w, int kind, int vertex, char *err, int err
 		fogvert = (kind >> 14) & 1, fogvertAll = (kind >> 15) & 1, fogvertT = (kind >> 13) & 1,  // (bits 14, 15, 13: F_FOGVERT, F_FOGVERT_ALL, F_FOGVERT_T)
 		qflat = (kind >> 12) & 1,  // (bit 12, a1Exact: F_QFLAT, the vertex stage reads its unit and quad from the per-quad table)
 		group = vertex == 1 && ((kind >> 11) & 1);  // (bit 11, -Dmcopt.own.frag.vGroup: F_GROUP, instances of several units)
-	NSString *name = vertex == 2 ? ((kind >> 29) & 1 ? @"own_mesh_q" : (kind >> 23) & 1 ? @"own_mesh4" : @"own_mesh") : vertex ? @"own_vs" : oracle ? @"own_fs_oracle"
+	NSString *name = vertex == 4 ? @"own_object" : vertex == 3 ? @"own_object_mesh" : vertex == 2 ? ((kind >> 29) & 1 ? @"own_mesh_q" : (kind >> 23) & 1 ? @"own_mesh4" : @"own_mesh") : vertex ? @"own_vs" : oracle ? @"own_fs_oracle"
 		: frag == 10 ? @"own_fs_nofog"
 		: frag == 9 ? @"own_fs_nofade"
 		: frag == 8 ? @"own_fs_tex"
@@ -595,14 +596,23 @@ static id<MTLRenderPipelineState> ownPipeline(Own *w, Enc *enc, int cutout, char
 			if (!pd.vertexFunction || !pd.fragmentFunction) return nil;
 		}
 		MTLMeshRenderPipelineDescriptor *md = nil;
-		if (cutout & (1 << 21)) {
+		if (cutout & ((1 << 21) | OWN_OBJECT_KIND)) {
 			// frag mesh shading: own_mesh instead of own_vs, the same fragment stage and attachments
 			md = [[MTLMeshRenderPipelineDescriptor new] autorelease];
 			md.label = pd.label;
-			md.meshFunction = ownStage(w, cutout, 2, err, errCap);
+			md.meshFunction = ownStage(w, cutout, (cutout & OWN_OBJECT_KIND) ? 3 : 2, err, errCap);
 			md.fragmentFunction = ownStage(w, cutout, 0, err, errCap);
 			if (!md.meshFunction || !md.fragmentFunction) return nil;
 			md.maxTotalThreadsPerMeshThreadgroup = (cutout & (1 << 23)) ? 128 : 32;
+			if (cutout & OWN_OBJECT_KIND) {
+				md.label = @"meshnet opaque objects";
+				md.objectFunction = ownStage(w, cutout, 4, err, errCap);
+				if (!md.objectFunction) return nil;
+				md.maxTotalThreadsPerObjectThreadgroup = 32;
+				md.maxTotalThreadsPerMeshThreadgroup = 64;
+				md.maxTotalThreadgroupsPerMeshGrid = 128;
+				md.payloadMemoryLength = 128 * 24;
+			}
 		}
 		for (int c = 0; c < enc->colorCount; c++) {
 			if (!enc->colors[c]) continue;
@@ -653,7 +663,61 @@ static id<MTLRenderPipelineState> ownPipeline(Own *w, Enc *enc, int cutout, char
 	}
 }
 
-// The frag occlusion's mesh-stage resources for a draw of kind (bit 27 phase A, 28 phase B; bit 0 the layer): terrain.metal FragOcc.
+int mco_object_ready(Own *w, Enc *enc, char *err, int errCap) {
+	if (![w->ctx->device supportsFamily:MTLGPUFamilyApple9]) {
+		snprintf(err, errCap, "meshnet objects require Apple GPU family 9 or newer");
+		return 0;
+	}
+	if (!enc->render) return 0;
+	return ownPipeline(w, enc, OWN_OBJECT_KIND, err, errCap) ? 1 : -1;
+}
+
+int mco_object_draw(Own *w, Enc *enc, const void *cullFrame, const void *drawFrame, int recordCount,
+	id<MTLBuffer> arena, id<MTLBuffer> sections, id<MTLBuffer> recs, id<MTLBuffer> mask, const int64_t *u,
+	id<MTLTexture> atlas, id<MTLSamplerState> atlasSampler, id<MTLTexture> light, id<MTLSamplerState> lightSampler,
+	char *err, int errCap) {
+	if (!enc->render || recordCount <= 0) return 0;
+	if ((uint64_t) recordCount * 32 > recs.length) {
+		snprintf(err, errCap, "meshnet record count exceeds resident buffer");
+		return -1;
+	}
+	id<MTLRenderPipelineState> pso = ownPipeline(w, enc, OWN_OBJECT_KIND, err, errCap);
+	if (!pso) return -1;
+	uint8_t frame[160] = {0};
+	memcpy(frame, cullFrame, 144);
+	uint32_t count = (uint32_t) recordCount;
+	memcpy(frame + 144, &count, 4);
+	id<MTLRenderCommandEncoder> r = enc->render;
+	[r pushDebugGroup:@"meshnet opaque objects"];
+	[r setRenderPipelineState:pso];
+	[r setDepthStencilState:w->depth];
+	[r setCullMode:MTLCullModeBack];
+	[r setFrontFacingWinding:MTLWindingClockwise];
+	[r setTriangleFillMode:MTLTriangleFillModeFill];
+	[r setDepthBias:0 slopeScale:0 clamp:0];
+	[r setObjectBytes:frame length:sizeof frame atIndex:0];
+	[r setObjectBuffer:sections offset:0 atIndex:1];
+	[r setObjectBuffer:recs offset:0 atIndex:2];
+	[r setObjectBuffer:mask offset:0 atIndex:3];
+	[r setMeshBuffer:arena offset:0 atIndex:16];
+	[r setMeshBytes:drawFrame length:80 atIndex:20];
+	[r setMeshBuffer:(id<MTLBuffer>) (void *) u[0] offset:(NSUInteger) u[1] atIndex:21];
+	[r setMeshBuffer:(id<MTLBuffer>) (void *) u[2] offset:(NSUInteger) u[3] atIndex:22];
+	[r setMeshBuffer:(id<MTLBuffer>) (void *) u[4] offset:(NSUInteger) u[5] atIndex:23];
+	[r setMeshTexture:light atIndex:17];
+	[r setMeshSamplerState:lightSampler atIndex:15];
+	[r setFragmentBuffer:(id<MTLBuffer>) (void *) u[2] offset:(NSUInteger) u[3] atIndex:22];
+	[r setFragmentBuffer:(id<MTLBuffer>) (void *) u[4] offset:(NSUInteger) u[5] atIndex:23];
+	[r setFragmentBuffer:(id<MTLBuffer>) (void *) u[6] offset:(NSUInteger) u[7] atIndex:24];
+	[r setFragmentTexture:atlas atIndex:16];
+	[r setFragmentSamplerState:atlasSampler atIndex:14];
+	[r drawMeshThreadgroups:MTLSizeMake((count + 31) / 32, 1, 1)
+		threadsPerObjectThreadgroup:MTLSizeMake(32, 1, 1) threadsPerMeshThreadgroup:MTLSizeMake(64, 1, 1)];
+	[r popDebugGroup];
+	w->lastPso = nil;
+	return 1;
+}
+
 static void ownBindOcc(Own *w, id<MTLRenderCommandEncoder> r, int kind) {
 	int phaseB = (kind >> 28) & 1;
 	uint32_t fo[8] = {w->fragOcc[0], w->fragOcc[1], w->fragOcc[2], w->fragOcc[3], w->fragOcc[4], w->fragStatsOn && w->fragStats ? 1u : 0u,

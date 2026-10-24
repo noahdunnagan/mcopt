@@ -2,6 +2,8 @@
 // Objects cross the boundary as retained pointers; Java owns them and hands them back to mc_release.
 // Built without ARC so ownership is explicit. Hot encoder calls allocate nothing, so they need no autorelease pool.
 #include <stdatomic.h>
+#include "framepace.h"
+#import <AppKit/AppKit.h>
 #import "mcmetal.h"
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -1700,7 +1702,12 @@ void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, in
 // link on the main display (presented handlers report no presentedTime on some displays, the rig's among them). The lead
 // is the measured encode-to-GPU-done time of presented frames plus the caller's margin for the compositor's latch.
 static _Atomic double nextRefresh, refreshPeriod, gpuLatency;
-static double pacedFor, lastPace, frameInterval;
+static FramePaceState paceState;
+static CVDisplayLinkRef paceDisplayLink;
+static CGDirectDisplayID paceDisplay;
+static _Atomic unsigned paceGeneration;
+static _Atomic double paceExtra;
+static double paceTarget;
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations" // CVDisplayLink: its replacement needs a run loop to deliver on
@@ -1716,11 +1723,31 @@ static CVReturn onRefresh(CVDisplayLinkRef link, const CVTimeStamp *now, const C
 	return kCVReturnSuccess;
 }
 
-static void startDisplayLink(void) {
-	CVDisplayLinkRef link;
-	if (CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &link) != kCVReturnSuccess) return;
-	CVDisplayLinkSetOutputCallback(link, onRefresh, NULL);
-	CVDisplayLinkStart(link); // runs for the life of the process
+static void setPaceDisplay(CGDirectDisplayID display) {
+	if (!display) display = CGMainDisplayID();
+	if (paceDisplayLink && paceDisplay == display) return;
+	if (paceDisplayLink) {
+		CVDisplayLinkStop(paceDisplayLink);
+		CVDisplayLinkRelease(paceDisplayLink);
+		paceDisplayLink = NULL;
+	}
+	paceDisplay = 0;
+	paceGeneration++;
+	nextRefresh = refreshPeriod = gpuLatency = paceExtra = 0;
+	paceTarget = 0;
+	framePaceReset(&paceState);
+	if (CVDisplayLinkCreateWithCGDisplay(display, &paceDisplayLink) != kCVReturnSuccess) return;
+	CVDisplayLinkSetOutputCallback(paceDisplayLink, onRefresh, NULL);
+	if (CVDisplayLinkStart(paceDisplayLink) != kCVReturnSuccess) {
+		CVDisplayLinkRelease(paceDisplayLink);
+		paceDisplayLink = NULL;
+		return;
+	}
+	paceDisplay = display;
+}
+
+void mc_pace_window(NSWindow *window) {
+	setPaceDisplay([window.screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue]);
 }
 #pragma clang diagnostic pop
 
@@ -1734,8 +1761,6 @@ static void startDisplayLink(void) {
 // shrinks it by PACE_DOWN. That settles at about PACE_DOWN / PACE_UP (2%) late frames, just at the latch deadline. Without
 // scanout times (presentedTime 0, as on the mini's display) nothing changes: the margin stays the caller's.
 static int paceAdapt;
-static _Atomic double paceExtra;  // seconds added to the caller's margin
-static double paceTarget;         // the refresh the frame being presented was paced for (render thread)
 #define PACE_UP 0.00025
 #define PACE_DOWN 0.000005
 #define PACE_EXTRA_MAX 0.006
@@ -1744,9 +1769,10 @@ double mc_pace_extra_ms(void) { return paceExtra * 1e3; }
 static void paceWatch(id<CAMetalDrawable> drawable) {
 	if (!paceAdapt || paceTarget <= 0) return;
 	double target = paceTarget, period = refreshPeriod;
+	unsigned generation = paceGeneration;
 	[drawable addPresentedHandler:^(id<MTLDrawable> d) {
 		double shown = d.presentedTime;
-		if (shown <= 0 || period <= 0) return;
+		if (shown <= 0 || period <= 0 || generation != paceGeneration) return;
 		double e = paceExtra;
 		e = shown - target > period * 0.5 ? e + PACE_UP : e - PACE_DOWN;
 		paceExtra = e < 0 ? 0 : e > PACE_EXTRA_MAX ? PACE_EXTRA_MAX : e;
@@ -1754,20 +1780,13 @@ static void paceWatch(id<CAMetalDrawable> drawable) {
 }
 
 int mc_pace(double margin) {
-	static int started;
-	if (!started) {
-		started = 1;
-		startDisplayLink();
-	}
-	double now = CACurrentMediaTime(), anchor = nextRefresh, period = refreshPeriod, lead = gpuLatency + margin + paceExtra;
-	if (lastPace > 0) frameInterval += (now - lastPace - frameInterval) * 0.1;
-	lastPace = now;
-	if (period <= 0 || now - anchor > 0.25) return 1; // no refreshes lately (starting, display asleep): present everything
-	double target = anchor + ceil((now + lead - anchor) / period) * period;
-	if (target < pacedFor + period / 2 || now + 2 * frameInterval + lead < target) return 0;
-	pacedFor = target;
-	paceTarget = target;
-	return 1;
+	if (!paceDisplayLink) setPaceDisplay(CGMainDisplayID());
+	return framePaceChoose(&paceState, CACurrentMediaTime(), nextRefresh, refreshPeriod, gpuLatency + margin + paceExtra, &paceTarget);
+}
+
+static void paceGpuCompleted(id<MTLCommandBuffer> command, double encodedAt) {
+	double latency = command.GPUEndTime - encodedAt;
+	if (isfinite(latency) && latency > 0 && latency < 0.25) gpuLatency += (latency - gpuLatency) * 0.1;
 }
 
 // ---- frame limiter wait ----
@@ -1808,7 +1827,7 @@ void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[r endEncoding];
 		double encodedAt = CACurrentMediaTime();
-		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
+		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { paceGpuCompleted(b, encodedAt); }];
 		paceWatch(drawable);
 		[cmd(enc) presentDrawable:drawable];
 	}
@@ -1888,7 +1907,7 @@ static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wai
 	[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 	[r endEncoding];
 	[p addCompletedHandler:^(id<MTLCommandBuffer> cb) {
-		gpuLatency += (CACurrentMediaTime() - queuedAt - gpuLatency) * 0.1;
+		paceGpuCompleted(cb, queuedAt);
 		atomic_store(&pqBusy[slot], 0);
 	}];
 	paceWatch(drawable);
