@@ -95,6 +95,8 @@ final class OwnNative {
 				own = (long) NEW.invokeExact(ctx, src, compact ? 1 : 0, fat ? 1 : 0, cpuClip ? 1 : 0, err, 16384);
 			} catch (Throwable t) {
 				throw rethrow(t);
+			} finally {
+				MemoryUtil.nmemFree(src);
 			}
 			if (own == 0) throw new IllegalStateException(MemoryUtil.memUTF8(err));
 			return own;
