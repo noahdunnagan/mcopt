@@ -88,6 +88,8 @@ final class MetalPipeline implements BackendRenderPipeline {
 		long t0 = System.nanoTime(), t1 = t0, t2 = t0;
 		CreateInfo.Shader vertex = shader(info, ShaderType.VERTEX), fragment = shader(info, ShaderType.FRAGMENT);
 		long vlib = 0, flib = 0, plib = 0;
+		// The sources go on the heap: LWJGL's per-thread stack is 64 KB, and a resource pack's core shaders can be bigger than that.
+		java.nio.ByteBuffer vsrc = null, fsrc = null;
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			long err = stack.nmalloc(1, 4096);
 			Translated v = translate(vertex.module(), info.uniforms().size());
@@ -102,9 +104,11 @@ final class MetalPipeline implements BackendRenderPipeline {
 				f = new Translated("// " + UNCACHED_NONCE + "\n" + f.msl, f.entry);
 			}
 			t1 = System.nanoTime();
-			vlib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(v.msl)), err, 4096);
+			vsrc = MemoryUtil.memUTF8(v.msl);
+			vlib = Native.libraryNew(ctx, MemoryUtil.memAddress(vsrc), err, 4096);
 			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
-			flib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(f.msl)), err, 4096);
+			fsrc = MemoryUtil.memUTF8(f.msl);
+			flib = Native.libraryNew(ctx, MemoryUtil.memAddress(fsrc), err, 4096);
 			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
 			t2 = System.nanoTime();
 			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
@@ -124,6 +128,8 @@ final class MetalPipeline implements BackendRenderPipeline {
 			MetalPipeline pipeline = new MetalPipeline(encoder, withDepth, withoutDepth, pulled, depthState, compare, info);
 			return pipeline;
 		} finally {
+			MemoryUtil.memFree(vsrc);
+			MemoryUtil.memFree(fsrc);
 			if (vlib != 0) Native.release(vlib);
 			if (flib != 0) Native.release(flib);
 			if (plib != 0) Native.release(plib);
