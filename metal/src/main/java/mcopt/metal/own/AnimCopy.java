@@ -25,7 +25,6 @@ import net.minecraft.util.Mth;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 /**
@@ -140,8 +139,9 @@ public final class AnimCopy {
 		OwnTerrain own = OwnTerrain.get();
 		if (!verify && !NO_COPY && ATLAS_WRITE && own != null && isAnimatedAtlas(atlas)) {
 			long src = mcopt.metal.MetalBridge.textureHandle(l.scratch), dst = mcopt.metal.MetalBridge.textureHandle(target);
-			try (MemoryStack stack = MemoryStack.stackPush()) {
-				long rects = stack.nmalloc(4, n * 24);
+			// (on the heap: a resource pack's atlas can animate thousands of sprites, more than LWJGL's 64 KB stack holds)
+			long rects = MemoryUtil.nmemAllocChecked(n * 24L);
+			try {
 				boolean ok = true;
 				for (int mip = 0; mip <= l.maxMip && ok; mip++) {
 					int count = 0, maxW = 0, maxH = 0;
@@ -166,6 +166,8 @@ public final class AnimCopy {
 					if (VERIFY_COPY_EVERY > 0 && ++VERIFY_COPY_COUNTS.computeIfAbsent(atlas, k -> new int[1])[0] % VERIFY_COPY_EVERY == 0) compare(atlas, l, drawn);
 					return true;
 				}
+			} finally {
+				MemoryUtil.nmemFree(rects);
 			}
 		}
 		// (blits: all mips in one run, one render-to-blit switch a tick instead of one a mip)
