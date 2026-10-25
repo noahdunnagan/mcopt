@@ -1,6 +1,7 @@
 package mcopt.metal.lod;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import java.io.IOException;
 import java.io.InputStream;
@@ -308,7 +309,13 @@ public final class Lod {
 		this.camX = camera.pos.x;
 		this.camY = camera.pos.y;
 		this.camZ = camera.pos.z;
-		Matrix4f proj = new Matrix4f(camera.projectionMatrix);
+		// The level's projection as GameRenderer.renderLevel set it (view bobbing, hurt tilt and the nausea skew, which
+		// camera.projectionMatrix doesn't carry), so far terrain moves with the real terrain; unreadable, the plain one.
+		Matrix4f proj = new Matrix4f();
+		GpuBufferSlice projection = RenderSystem.getProjectionMatrixBuffer();
+		long pa = projection != null ? MetalBridge.bufferAddress(projection.buffer()) : 0;
+		if (pa != 0) proj.setFromAddress(pa + projection.offset());
+		else proj.set(camera.projectionMatrix);
 		this.viewProj.set(proj).mul(camera.viewRotationMatrix);
 		camera.viewRotationMatrix.positiveZ(this.forward).negate();
 		this.frustum.set(this.viewProj, false);
