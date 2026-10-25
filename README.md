@@ -26,7 +26,8 @@ isn't required; keep it if your other mods need it.
 
 To check it's working: press F3 (fn + F3 on a Mac keyboard); the bottom right says `Metal 3 (mcopt)`.
 
-Shows an fps counter in the top-left corner (hidden with F1 or F3; fn + F1 or fn + F3 on a Mac keyboard).
+Shows an fps counter in the top-left corner (hidden with F1 or F3; fn + F1 or fn + F3 on a Mac keyboard). To turn it off,
+add `mcopt.fps=false` to `config/mcopt.properties`.
 
 ## Settings
 

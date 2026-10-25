@@ -28,6 +28,7 @@ The jar is a mod, not an app: double-clicking it only shows these install steps.
 
 For the most fps: Options > Video Settings, VSync off and Max Framerate Unlimited.
 Shows an fps counter in the top-left corner (hidden with F1 or F3; fn + F1 or fn + F3 on a Mac keyboard).
+To turn it off, add mcopt.fps=false to config/mcopt.properties (see below).
 
 On a computer the mod can't run on (not an Apple Silicon Mac, or macOS older than 26), the game stops at launch
 and says what's missing; remove the mcopt jar from the mods folder to play there.

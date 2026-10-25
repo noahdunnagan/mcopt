@@ -175,6 +175,8 @@ public final class Profile {
 			#
 			# Single switches win over the profile, e.g. our renderer off but the rest on:
 			#mcopt.own=false
+			# The fps counter in the top-left corner off: remove the # below.
+			#mcopt.fps=false
 			# Far terrain (EXPERIMENTAL, off by default; for Macs with 10 or more GPU cores): remove the # below.
 			#mcopt.lod=true
 			""".formatted(name);

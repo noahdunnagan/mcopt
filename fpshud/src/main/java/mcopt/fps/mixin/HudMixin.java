@@ -13,9 +13,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** "NN fps" in the top-left corner while playing. Hidden with the HUD (F1) and while F3 shows its own counter. */
+/**
+ * "NN fps" in the top-left corner while playing. Hidden with the HUD (F1) and while F3 shows its own counter.
+ * {@code mcopt.fps=false} in config/mcopt.properties (or -Dmcopt.fps=false) turns it off.
+ */
 @Mixin(Hud.class)
 abstract class HudMixin {
+	@Unique private static final boolean mcoptFps$on = Boolean.parseBoolean(System.getProperty("mcopt.fps", "true"));
+
 	@Shadow @Final private Minecraft minecraft;
 	@Shadow public abstract boolean isHidden();
 
@@ -25,7 +30,7 @@ abstract class HudMixin {
 
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
 	private void mcoptFps$draw(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
-		if (this.isHidden() || this.minecraft.getDebugOverlay().showDebugScreen() || this.minecraft.gui.screen() instanceof LevelLoadingScreen) {
+		if (!mcoptFps$on || this.isHidden() || this.minecraft.getDebugOverlay().showDebugScreen() || this.minecraft.gui.screen() instanceof LevelLoadingScreen) {
 			return;
 		}
 		int fps = this.minecraft.getFps();
