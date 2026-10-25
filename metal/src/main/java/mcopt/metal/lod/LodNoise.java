@@ -28,6 +28,7 @@ import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
 import net.minecraft.world.level.levelgen.densityfunction.DensitySampler;
 import net.minecraft.world.level.levelgen.densityfunction.DensitySamplerSet;
 import net.minecraft.world.level.levelgen.densityfunction.DensityVolume;
+import net.minecraft.world.level.levelgen.densityfunction.DfRewriteRule;
 import net.minecraft.world.level.levelgen.densityfunction.DensityFunctions;
 import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 import net.minecraft.world.level.levelgen.densityfunction.generator.ConstantFunction;
@@ -91,6 +92,18 @@ final class LodNoise {
 			}
 		}
 		return b.append(')').toString();
+	}
+
+	/**
+	 * f with every interpolated(...) replaced by its input. The far terrain samples only the corners of the game's 4 x 8 x 4
+	 * cells, where an interpolated function is its input, so the values are the same; but a volume whose step isn't the cell's
+	 * (every tile coarser than 4 blocks) makes InterpolatedFunction fill a buffer of every block in it first: gigabytes for a
+	 * coarse tile of a world without sloped_cheese (amplified, large biomes), and the workers run out of heap.
+	 */
+	static DensityFunction uninterpolated(DensityFunction f) {
+		DfRewriteRule[] rule = new DfRewriteRule[1];
+		rule[0] = g -> g instanceof InterpolatedFunction i ? rule[0].rewrite(i.input()) : g.rewriteChildren(rule[0]);
+		return rule[0].rewrite(f);
 	}
 
 	private static boolean beardifier(DensityFunction f) {
@@ -199,7 +212,7 @@ final class LodNoise {
 		if (level.dimensionType().hasCeiling()) return null;
 		NoiseGeneratorSettings settings = gen.generatorSettings().value();
 		RandomState random = level.getChunkSource().randomState();
-		DensityFunction terrain = settings.noiseRouter().finalDensity();
+		DensityFunction terrain = uninterpolated(settings.noiseRouter().finalDensity());
 		boolean slide = false;
 		Optional<? extends Holder<DensityFunction>> cheese = level.registryAccess().lookupOrThrow(Registries.DENSITY_FUNCTION)
 			.get(ResourceKey.create(Registries.DENSITY_FUNCTION, Identifier.withDefaultNamespace("overworld/sloped_cheese")));
