@@ -10,6 +10,7 @@ import com.mojang.renderpearl.backend.api.SpvModule;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -102,9 +103,9 @@ final class MetalPipeline implements BackendRenderPipeline {
 				f = new Translated("// " + UNCACHED_NONCE + "\n" + f.msl, f.entry);
 			}
 			t1 = System.nanoTime();
-			vlib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(v.msl)), err, 4096);
+			vlib = library(ctx, v.msl, err);
 			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
-			flib = Native.libraryNew(ctx, MemoryUtil.memAddress(stack.UTF8(f.msl)), err, 4096);
+			flib = library(ctx, f.msl, err);
 			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
 			t2 = System.nanoTime();
 			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
@@ -134,6 +135,15 @@ final class MetalPipeline implements BackendRenderPipeline {
 				libraryNs += t2 - t1;
 				stateNs += t3 - t2;
 			}
+		}
+	}
+
+	private static long library(long ctx, String msl, long err) {
+		ByteBuffer src = MemoryUtil.memUTF8(msl);
+		try {
+			return Native.libraryNew(ctx, MemoryUtil.memAddress(src), err, 4096);
+		} finally {
+			MemoryUtil.memFree(src);
 		}
 	}
 
